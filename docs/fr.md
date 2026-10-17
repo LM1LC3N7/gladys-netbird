@@ -29,18 +29,19 @@ Intégration non officielle, sans lien avec NetBird.
    un utilisateur de service `gladys` au rôle **Auditor** : il lit tous les
    pairs et ne change rien (un utilisateur de service n'est pas une
    personne : son jeton ne cesse pas de marcher quand quelqu'un part). Si le
-   rôle Auditor n'est pas proposé pour un utilisateur de service sur votre
-   serveur, prenez **Admin** (Gladys ne fait toujours que lire, mais le
-   jeton pourrait tout changer : gardez-le bien).
+   rôle Auditor n'est pas proposé, prenez le rôle **User** : un utilisateur
+   de service lit tous les pairs et les réglages du compte quel que soit son
+   rôle, et au rôle User il ne peut rien changer. Jamais Admin : Gladys ne
+   fait que lire, le jeton n'a besoin d'aucun droit de modification.
 2. Ouvrez l'utilisateur, **Create Token**, nommez-le `gladys`, choisissez une
    expiration et copiez le jeton (il commence par `nbp_`) : NetBird ne
    l'affiche qu'une fois.
-3. **Pas le rôle User** : un jeton au rôle User ne liste que les pairs
-   enregistrés par son propre utilisateur, et aucun quand le compte
-   restreint le tableau de bord des utilisateurs ordinaires (« Restrict
-   dashboard for regular users »). Un utilisateur de service ne possède
-   aucun pair : au rôle User, il ne verrait rien. Quand l'intégration peut
-   le savoir (un utilisateur ordinaire), l'état de connexion le signale.
+3. **Pas le jeton personnel d'un utilisateur ordinaire au rôle User** : un
+   tel jeton ne liste que les pairs enregistrés par cet utilisateur, et
+   aucun quand le compte restreint le tableau de bord des utilisateurs
+   ordinaires (« Restrict dashboard for regular users »). Quand
+   l'intégration peut le savoir, l'état de connexion le signale. Un
+   utilisateur de service n'a pas cette limite.
 4. Les dates d'expiration des pairs (expiration de la connexion) viennent
    des réglages du compte : un jeton qui ne peut pas les lire laisse ces
    dates vides, le reste marche.

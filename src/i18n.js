@@ -12,8 +12,8 @@ const pluralFr = (n, one, many) => (n <= 1 ? one : many);
 
 /** The token sees only the peers its user owns (User role, or restricted). */
 const OWN_PEERS_ONLY = {
-  en: 'The user of the token lists only its own peers (User role, or the dashboard of regular users restricted: then none): use the token of a service user with the Auditor role (or Admin) to see them all.',
-  fr: 'L’utilisateur du jeton ne liste que ses propres pairs (rôle User, ou tableau de bord des utilisateurs ordinaires restreint : aucun alors) : utilisez le jeton d’un utilisateur de service au rôle Auditor (ou Admin) pour les voir tous.',
+  en: 'The user of the token lists only its own peers (User role, or the dashboard of regular users restricted: then none): use the token of a service user with the Auditor role (or User) to see them all.',
+  fr: 'L’utilisateur du jeton ne liste que ses propres pairs (rôle User, ou tableau de bord des utilisateurs ordinaires restreint : aucun alors) : utilisez le jeton d’un utilisateur de service au rôle Auditor (ou User) pour les voir tous.',
 };
 const minutes = (ms) => Math.max(1, Math.round(ms / 60_000));
 
@@ -87,8 +87,8 @@ export const T = {
         ownPeersOnly
           ? OWN_PEERS_ONLY
           : {
-              en: 'A token of the User role lists only the peers its user owns (none when the dashboard of regular users is restricted): use the token of a service user with the Auditor role (or Admin).',
-              fr: 'Un jeton au rôle User ne liste que les pairs de son utilisateur (aucun quand le tableau de bord des utilisateurs ordinaires est restreint) : utilisez le jeton d’un utilisateur de service au rôle Auditor (ou Admin).',
+              en: 'If this is the personal token of a user with the User role, it lists only that user’s peers (none when the dashboard of regular users is restricted): take the token of a service user instead (Auditor or User role).',
+              fr: 'Si c’est le jeton personnel d’un utilisateur au rôle User, il ne liste que ses pairs (aucun quand le tableau de bord des utilisateurs ordinaires est restreint) : prenez le jeton d’un utilisateur de service (Auditor ou User).',
             },
       ),
     urlInvalid: {

@@ -109,6 +109,12 @@ test('the user of the token: no name, no e-mail kept', () => {
   assert.equal(reader('Admin', true), false);
   assert.equal(reader('user', false), true, 'User: only its own peers');
   assert.equal(reader('network_admin', false), true);
+  assert.equal(reader('user', true), false, 'peers.read decides when given');
+  assert.equal(
+    parseUser({ role: 'user', is_service_user: true, permissions: { modules: {} } }).ownPeersOnly,
+    false,
+    'a service user reads every peer whatever its role',
+  );
   assert.equal(parseUser([]), null);
 });
 

@@ -109,6 +109,16 @@ test('the configuration matches the code; the secret is never said encrypted', (
   }
   assert.match(fields.intro.description.en, /Auditor role/, 'the role that sees every peer');
   assert.match(fields.intro.description.fr, /rôle Auditor/);
+  // Read only: Admin is never recommended (a service user reads everything).
+  for (const [name, text] of [
+    ['manifest', JSON.stringify(manifest)],
+    ['docs/en.md', read('docs/en.md')],
+    ['docs/fr.md', read('docs/fr.md')],
+    ['README.md', read('README.md')],
+    ['src/i18n.js', read('src/i18n.js')],
+  ]) {
+    assert.doesNotMatch(text, /\(or Admin\)|\(ou Admin\)|Admin otherwise|à défaut Admin/, name);
+  }
 });
 
 test('sections store nothing; links https', () => {

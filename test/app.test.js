@@ -349,11 +349,18 @@ test('a User-role token lists only its own peers: said in the status, even with 
   assert.match(second.gladys.fake.connectionStatus.message.en, /sees no peer/);
   assert.match(second.gladys.fake.connectionStatus.message.en, /lists only its own peers/);
   await running.stop();
-  // A service user (user unknown) with an empty list: the Auditor advice.
+  // A service user (user unknown) with an empty list: the advice about personal User tokens.
   const empty = createFakeNetbird();
   empty.peers = [];
   const third = await setup({ netbird: empty });
-  assert.match(third.gladys.fake.connectionStatus.message.en, /Auditor role/);
+  assert.match(
+    third.gladys.fake.connectionStatus.message.en,
+    /If this is the personal token of a user with the User role.*service user instead \(Auditor or User role\)/,
+  );
+  assert.match(
+    third.gladys.fake.connectionStatus.message.fr,
+    /prenez le jeton d’un utilisateur de service \(Auditor ou User\)/,
+  );
   assert.match(third.gladys.fake.connectionStatus.message.fr, /0 pair connecté|aucun pair/);
 });
 

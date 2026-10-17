@@ -130,9 +130,10 @@ export function parseAccount(json) {
 /**
  * GET /api/users/current -> { serviceUser, restricted, role, peersRead,
  * ownPeersOnly }: whether the token sees every peer. No name, no e-mail is
- * kept. In NetBird, a user without the `peers.read` permission (the User
- * role) lists only the peers it owns, and none at all when the account
- * restricts the dashboard of regular users (`is_restricted`).
+ * kept. In NetBird, a regular user without the `peers.read` permission
+ * (the User role) lists only the peers it owns, and none at all when the
+ * account restricts the dashboard of regular users (`is_restricted`); a
+ * service user reads everything.
  */
 export function parseUser(json) {
   if (!json || typeof json !== 'object' || Array.isArray(json)) return null;
@@ -144,7 +145,11 @@ export function parseUser(json) {
     restricted,
     role,
     peersRead,
-    ownPeersOnly: restricted || role === 'user' || peersRead === false,
+    // A service user reads every peer whatever its role (manager.go of
+    // NetBird); otherwise `peers.read` decides when given, the role if not.
+    ownPeersOnly:
+      json.is_service_user !== true &&
+      (restricted || (peersRead !== null ? !peersRead : role === 'user')),
   };
 }
 

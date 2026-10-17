@@ -25,7 +25,9 @@ Gladys ⇄ SDK ⇄ src/app.js (NetbirdApp)
 
 - **Authentication**: a personal access token in the
   `Authorization: Token <PAT>` header, nothing else; a service user with
-  the Auditor role is recommended (the User role lists only its own peers).
+  the Auditor role is recommended, User otherwise, never Admin (a service
+  user reads everything whatever its role; the personal token of a regular
+  user with the User role lists only that user's peers).
   HTTP 401 (or a 403 carrying the NetBird error envelope
   `{ message, code }`) on `/api/peers` is final: a salted HMAC of the
   address and token is kept in `/data`, nothing is sent again until the

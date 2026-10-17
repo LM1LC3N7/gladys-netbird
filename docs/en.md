@@ -26,16 +26,17 @@ Unofficial integration, not affiliated with NetBird.
 1. In the NetBird dashboard, open **Team → Service Users** and create a
    service user `gladys` with the **Auditor** role: it reads every peer and
    changes nothing (a service user is not a person: its token does not stop
-   working when someone leaves). If the Auditor role is not offered for a
-   service user on your server, use **Admin** (Gladys still only reads, but
-   the token could change everything: keep it safe).
+   working when someone leaves). If the Auditor role is not offered, use the
+   **User** role: a service user reads every peer and the account settings
+   whatever its role, and with User it can change nothing. Never Admin:
+   Gladys only reads, the token needs no right to change anything.
 2. Open the user, **Create Token**, name it `gladys`, pick an expiration
    and copy the token (it starts with `nbp_`): NetBird shows it only once.
-3. **Not the User role**: a token of the User role lists only the peers its
-   own user registered, and none at all when the account restricts the
-   dashboard of regular users ("Restrict dashboard for regular users"). A
-   service user owns no peer: with the User role it would see nothing. When
-   the integration can tell (a regular user), the connection status says so.
+3. **Not a personal token of a regular user with the User role**: such a
+   token lists only the peers that user registered, and none at all when
+   the account restricts the dashboard of regular users ("Restrict
+   dashboard for regular users"). When the integration can tell, the
+   connection status says so. A service user does not have this limit.
 4. The expiration dates of the peers (login expires) come from the account
    settings: a token that may not read them leaves these dates empty, the
    rest works.

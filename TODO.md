@@ -37,9 +37,11 @@ up to date at the end of every milestone.
       netbirdio/netbird main and docs.netbird.io): `/api/users/current` is
       optional (403 for every service user: GetCurrentUserInfo), only
       `/api/peers` decides a refusal, and only with the NetBird envelope
-      `{ message, code === status }`; Auditor service user recommended (the
-      User role lists only its own peers, none when the dashboard of regular
-      users is restricted), hint from `permissions.modules.peers.read` /
+      `{ message, code === status }`; Auditor service user recommended, User
+      otherwise, never Admin (approval round 1: a service user reads
+      everything whatever its role; only the personal token of a regular
+      User lists its own peers, none when the dashboard of regular users is
+      restricted), hint from `permissions.modules.peers.read` /
       `role` / `is_restricted`, also with no peer; every state within the
       budget (counts > connected > login expired > texts in turn, a failed
       publication counted); the capped end of a pause written back, the
@@ -136,14 +138,22 @@ up to date at the end of every milestone.
   generated once in `/data`) is kept; restarts, reconnections to Gladys and
   "Test the connection" send nothing; only saving the configuration tries
   again (brief). The badges turn `unreachable`.
-- **Recommended token** (review): a service user with the **Auditor** role
-  (reads everything, changes nothing), Admin otherwise; never the User
-  role, which lists only the peers its user owns (none for a service user,
-  none at all when the dashboard of regular users is restricted). When the
-  user is readable (a regular user), `ownPeersOnly` = `is_restricted`, or
-  role `user`, or `permissions.modules.peers.read` false: said in the
-  status, with or without peers; an empty list always gets the Auditor
-  advice.
+- **Recommended token** (review, corrected at approval round 1): a service
+  user with the **Auditor** role (reads everything, changes nothing), the
+  **User** role otherwise, **never Admin** (read only: no right to change
+  anything is needed). Rule of NetBird
+  (`management/server/permissions/manager.go`, `ValidateUserPermissions`):
+  `if operation == operations.Read && user.IsServiceUser { return true }`:
+  a service user reads every peer and the account settings whatever its
+  role. Should NetBird drop that rule one day, a service user with the
+  User role would list nothing: hence the preference for Auditor, whose
+  role grants the reads itself. Only the personal token of a regular user
+  with the User role lists just the peers that user owns (none when the
+  dashboard of regular users is restricted). When the user is readable (a
+  regular user), `ownPeersOnly` = `permissions.modules.peers.read` when it
+  is a boolean, else `is_restricted` or role `user`: said in the status,
+  with or without peers; an empty list with an unknown user (a service
+  user) gets the advice about personal User tokens.
 - **Pauses**: HTTP 429 pauses every path for its Retry-After, bounded
   max(1 min, poll interval) to 6 h; 5xx pauses for the back-off delay (or a
   longer Retry-After, up to 6 h). Both are persisted in `/data` per server
