@@ -10,6 +10,8 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-17
+
 ### Added
 
 - First version, never tested with a real NetBird account: the peers of a
@@ -34,3 +36,6 @@ the notes of the version's GitHub Release.
   the texts in turn); the status says when the token lists only its own
   peers, and advises a service user with the Auditor role.
 - Button "Test the connection".
+
+[Unreleased]: https://github.com/LM1LC3N7/gladys-netbird/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/LM1LC3N7/gladys-netbird/releases/tag/v0.1.1
