@@ -71,13 +71,17 @@ export function createFakeNetbird() {
         domain: 'example.org',
       },
     ],
+    /** A service user with the Auditor role (reads everything, changes nothing). */
     user: {
       id: 'svc',
       email: 'gladys@example.org',
       name: 'gladys',
-      role: 'user',
+      role: 'auditor',
       is_service_user: true,
-      permissions: { is_restricted: false },
+      permissions: {
+        is_restricted: false,
+        modules: { peers: { read: true, create: false, update: false, delete: false } },
+      },
     },
     /** path -> { status, headers, body } answered once (FIFO). */
     failures: [],
@@ -103,11 +107,19 @@ export function createFakeNetbird() {
     if (headers.authorization !== `Token ${TOKEN}`) {
       return json(401, { message: 'token invalid', code: 401 });
     }
-    if (path === '/api/users/current') return json(200, fake.user);
+    // NetBird answers PermissionDenied to every service user here
+    // (GetCurrentUserInfo), with its error envelope.
+    if (path === '/api/users/current') {
+      if (fake.user.is_service_user) return json(403, { message: 'permission denied', code: 403 });
+      return json(200, fake.user);
+    }
     if (path === '/api/peers') return json(200, fake.peers);
     if (path === '/api/accounts') return json(200, fake.account);
     return json(404, { message: 'not found', code: 404 });
   }
+
+  /** A promise /api/peers waits for before answering (a slow reading). */
+  fake.peersGate = null;
 
   /** The transport of src/netbird/http.js, in memory. */
   fake.request = async (rawUrl, options = {}) => {
@@ -116,6 +128,7 @@ export function createFakeNetbird() {
       Object.entries(options.headers ?? {}).map(([k, v]) => [k.toLowerCase(), v]),
     );
     fake.requests.push({ url: rawUrl, path: url.pathname, headers });
+    if (url.pathname === '/api/peers' && fake.peersGate) await fake.peersGate;
     if (fake.unreachable) throw new NetbirdError(CODES.UNREACHABLE, 'ECONNREFUSED');
     return answer(url, headers);
   };

@@ -18,7 +18,9 @@ const text = (value) => (typeof value === 'string' ? value.trim() : '');
 /**
  * The management server: empty for NetBird Cloud (https://api.netbird.io),
  * else `https://host[:port][/path]` of a self-hosted server (a bare
- * `host[:port]` is read as https). A trailing `/api` is dropped. http:// is
+ * `host[:port]` is read as https). A trailing `/api` is dropped; the
+ * dashboard of NetBird Cloud (app.netbird.io) is read as its API
+ * (api.netbird.io). http:// is
  * refused (the token would cross the network in clear), and so are
  * credentials, a query and a fragment (an address ends up in logs).
  *   -> { base, origin, hostname, port, cloud } or { error: 'invalid' | 'http' | 'credentials' }
@@ -46,7 +48,9 @@ export function parseServerUrl(value) {
   const typedPort = /^[a-z][a-z0-9+.-]*:\/\/(?:\[[^\]]*\]|[^/:?#]*):(\d+)/i.exec(full);
   const port = typedPort ? Number(typedPort[1]) : 443;
   if (!(port > 0 && port < 65536)) return { error: 'invalid' };
-  const hostname = url.hostname.toLowerCase();
+  let hostname = url.hostname.toLowerCase();
+  // The dashboard of NetBird Cloud is app.netbird.io; its API is api.netbird.io.
+  if (hostname === 'app.netbird.io' && port === 443) hostname = 'api.netbird.io';
   const origin = port === 443 ? `https://${hostname}` : `https://${hostname}:${port}`;
   return {
     base: `${origin}${path}`,

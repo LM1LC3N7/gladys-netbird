@@ -26,27 +26,30 @@ Intégration non officielle, sans lien avec NetBird.
 ## Avant de commencer : un jeton qui ne fait que lire
 
 1. Dans le tableau de bord NetBird, ouvrez **Team → Service Users** et créez
-   un utilisateur de service `gladys` au rôle **User** (un utilisateur de
-   service n'est pas une personne : son jeton ne cesse pas de marcher quand
-   quelqu'un part). Si votre offre n'a pas d'utilisateurs de service, prenez
-   **Team → Users** et votre propre utilisateur.
+   un utilisateur de service `gladys` au rôle **Auditor** : il lit tous les
+   pairs et ne change rien (un utilisateur de service n'est pas une
+   personne : son jeton ne cesse pas de marcher quand quelqu'un part). Si le
+   rôle Auditor n'est pas proposé pour un utilisateur de service sur votre
+   serveur, prenez **Admin** (Gladys ne fait toujours que lire, mais le
+   jeton pourrait tout changer : gardez-le bien).
 2. Ouvrez l'utilisateur, **Create Token**, nommez-le `gladys`, choisissez une
    expiration et copiez le jeton (il commence par `nbp_`) : NetBird ne
    l'affiche qu'une fois.
-3. Vérifiez que cet utilisateur voit tous les pairs : avec le rôle **User**,
-   NetBird peut ne montrer à un utilisateur ordinaire que ses propres pairs
-   (réglage du compte « Restrict regular users ») ; l'état de connexion de
-   l'intégration le signale dans ce cas. Un jeton **Admin** voit tout, mais
-   pourrait tout changer : Gladys ne fait que lire, mais un jeton aux droits
-   réduits est plus sûr.
+3. **Pas le rôle User** : un jeton au rôle User ne liste que les pairs
+   enregistrés par son propre utilisateur, et aucun quand le compte
+   restreint le tableau de bord des utilisateurs ordinaires (« Restrict
+   dashboard for regular users »). Un utilisateur de service ne possède
+   aucun pair : au rôle User, il ne verrait rien. Quand l'intégration peut
+   le savoir (un utilisateur ordinaire), l'état de connexion le signale.
 4. Les dates d'expiration des pairs (expiration de la connexion) viennent
-   des réglages du compte, qu'un jeton User n'a peut-être pas le droit de
-   lire : elles restent alors vides, le reste marche.
+   des réglages du compte : un jeton qui ne peut pas les lire laisse ces
+   dates vides, le reste marche.
 
 ## Configuration
 
-- **Serveur de gestion** : vide pour NetBird Cloud
-  (`https://api.netbird.io`). Auto-hébergé : l'adresse https de votre
+- **Serveur de gestion** : vide pour NetBird Cloud (son API est
+  `https://api.netbird.io` ; l'adresse du tableau de bord `app.netbird.io`
+  est lue ainsi). Auto-hébergé : l'adresse https de votre
   serveur, celle du tableau de bord (`https://netbird.example.org` ; un port
   et un chemin sont gardés, un `/api` final est retiré). `http://` est
   refusé : le jeton traverserait le réseau en clair.
@@ -68,7 +71,9 @@ Intégration non officielle, sans lien avec NetBird.
   sont comptés. Vide : tous les pairs que voit le jeton.
 - **Rafraîchissement** : toutes les minutes (par défaut) à toutes les 10
   minutes. Une requête par lecture (les pairs), plus les réglages du compte
-  une fois par heure.
+  une fois par heure, et l'utilisateur du jeton (`/api/users/current`) au
+  démarrage et à chaque nouvel essai après une erreur. Un utilisateur de
+  service y reçoit un 403 : c'est attendu et ignoré.
 
 Ouvrez ensuite l'onglet **Découverte** et créez les pairs et le réseau à
 suivre. Seuls les appareils créés reçoivent leurs états.
@@ -77,9 +82,10 @@ suivre. Seuls les appareils créés reçoivent leurs états.
 
 - **Connecté** (1 / 0) : ce que NetBird dit du pair en ce moment. Rien n'est
   publié tant que NetBird ne le dit pas.
-- **Dernière vue** : la dernière fois que le serveur de gestion a eu des
-  nouvelles du pair, sous la forme `2026-10-17 08:00 UTC` (en UTC, le fuseau
-  de NetBird).
+- **Dernière vue** : la dernière connexion du pair au serveur de gestion
+  (ou son dernier changement d'état là-bas), sous la forme
+  `2026-10-17 08:00 UTC` (en UTC, le fuseau de NetBird). Elle peut ne pas
+  bouger tant que le pair reste connecté.
 - **IP NetBird** : l'adresse du pair dans le réseau NetBird (`100.x.y.z`).
   Son adresse publique n'est jamais lue dans Gladys.
 - **Version du client** : la version du client NetBird du pair. L'API ne dit
@@ -93,8 +99,13 @@ suivre. Seuls les appareils créés reçoivent leurs états.
   connexion plus l'expiration du compte), `—` quand elle n'expire jamais,
   rien tant qu'elle ne peut pas être connue (un jeton qui ne peut pas lire
   les réglages du compte).
-- **Pairs connectés / Pairs** (appareil réseau) : les comptes des pairs
-  suivis (ceux du filtre de groupes, s'il y en a un).
+- **Pairs connectés / Pairs** (appareil réseau) : les comptes des pairs du
+  filtre de groupes (tous, sans filtre), y compris ceux au-delà des 500 qui
+  deviennent des appareils.
+- Gladys accepte 300 états par minute d'une intégration : celle-ci en envoie
+  250 au plus, les comptes d'abord, puis connecté, puis connexion expirée,
+  puis les textes (à tour de rôle). Avec beaucoup de pairs créés d'un coup,
+  les premières valeurs arrivent en quelques minutes.
 
 ## Déclencheurs de scène
 
@@ -113,13 +124,15 @@ lecture.
 
 ## Problèmes de connexion
 
-- **Jeton refusé** (HTTP 401, ou 403 répondu par l'API NetBird sur
-  l'utilisateur ou les pairs : faux, expiré, révoqué, ou sans le droit de
-  lire les pairs) : Gladys s'arrête et ne réessaie pas seul, même après un
-  redémarrage ou quand Gladys se reconnecte. Créez un nouveau jeton,
-  collez-le et enregistrez la configuration : seul l'enregistrement
-  réessaie. Une page 403 qui ne vient pas de l'API (un proxy ou un pare-feu
-  devant elle) est réessayée normalement.
+- **Jeton refusé** (HTTP 401, ou 403 répondu par l'API NetBird elle-même,
+  sur la liste des pairs : faux, expiré, révoqué, ou sans le droit de lister
+  les pairs) : Gladys s'arrête et ne réessaie pas seul, même après un
+  redémarrage ou quand Gladys se reconnecte. Créez un nouveau jeton (un
+  utilisateur de service au rôle Auditor), collez-le et enregistrez la
+  configuration : seul l'enregistrement réessaie. Une page 403 qui ne vient
+  pas de l'API (un proxy ou un pare-feu devant elle) est réessayée
+  normalement. Un refus sur l'utilisateur du jeton (`/api/users/current`,
+  toujours 403 pour un utilisateur de service) n'arrête jamais rien.
 - **NetBird surchargé** (HTTP 429) ou **erreur serveur** (HTTP 5xx) : toutes
   les requêtes sont suspendues, tant que NetBird le demande (Retry-After)
   entre 1 minute et 6 heures, jamais moins que l'intervalle de
@@ -138,8 +151,12 @@ lecture.
 
 ## Limites
 
-- Un compte NetBird par intégration ; 500 pairs au plus (resserrez le filtre
-  de groupes au-delà).
+- Un compte NetBird par intégration ; 500 pairs au plus deviennent des
+  appareils (resserrez le filtre de groupes au-delà ; les comptes les
+  incluent tous).
+- Un pair supprimé dans NetBird puis réenregistré reçoit un nouvel
+  identifiant NetBird : il devient un nouvel appareil (l'ancien reste sans
+  valeurs).
 - L'appareil réseau est unique par intégration (`network:main`) : diriger
   l'intégration vers un autre compte garde le même appareil.
 - Lecture seule dans cette version : aucune commande (supprimer un pair,

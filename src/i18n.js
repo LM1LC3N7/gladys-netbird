@@ -7,6 +7,14 @@
 import { CODES } from './netbird/errors.js';
 
 const plural = (n, one, many) => (n === 1 ? one : many);
+/** French: 0 and 1 take the singular ("0 pair connecté"). */
+const pluralFr = (n, one, many) => (n <= 1 ? one : many);
+
+/** The token sees only the peers its user owns (User role, or restricted). */
+const OWN_PEERS_ONLY = {
+  en: 'The user of the token lists only its own peers (User role, or the dashboard of regular users restricted: then none): use the token of a service user with the Auditor role (or Admin) to see them all.',
+  fr: 'L’utilisateur du jeton ne liste que ses propres pairs (rôle User, ou tableau de bord des utilisateurs ordinaires restreint : aucun alors) : utilisez le jeton d’un utilisateur de service au rôle Auditor (ou Admin) pour les voir tous.',
+};
 const minutes = (ms) => Math.max(1, Math.round(ms / 60_000));
 
 /** Why NetBird failed, in a few words. */
@@ -51,35 +59,38 @@ const join = (...parts) => ({
 
 export const T = {
   status: {
-    ok: ({ total, connected, restricted, capped, filtered }) =>
+    ok: ({ total, connected, ownPeersOnly, capped, filtered }) =>
       join(
         {
           en: `NetBird answers: ${connected} of ${total} ${plural(total, 'peer', 'peers')} connected${filtered ? ' (groups of the filter)' : ''}.`,
-          fr: `NetBird répond : ${connected} ${plural(connected, 'pair connecté', 'pairs connectés')} sur ${total}${filtered ? ' (groupes du filtre)' : ''}.`,
+          fr: `NetBird répond : ${connected} ${pluralFr(connected, 'pair connecté', 'pairs connectés')} sur ${total}${filtered ? ' (groupes du filtre)' : ''}.`,
         },
-        restricted
-          ? {
-              en: 'The user of the token sees only its own peers: use a token of an admin or of a service user to see them all.',
-              fr: 'L’utilisateur du jeton ne voit que ses propres pairs : utilisez le jeton d’un administrateur ou d’un utilisateur de service pour les voir tous.',
-            }
-          : {},
+        ownPeersOnly ? OWN_PEERS_ONLY : {},
         capped > 0
           ? {
               en: `${capped} more ${plural(capped, 'peer is', 'peers are')} left out (500 at most): narrow the group filter.`,
-              fr: `${capped} ${plural(capped, 'autre pair est ignoré', 'autres pairs sont ignorés')} (500 au plus) : resserrez le filtre de groupes.`,
+              fr: `${capped} ${pluralFr(capped, 'autre pair est ignoré', 'autres pairs sont ignorés')} (500 au plus) : resserrez le filtre de groupes.`,
             }
           : {},
       ),
-    noPeer: (filtered) =>
-      filtered
-        ? {
-            en: 'NetBird answers, but no peer is in the groups of the filter: check their names (or ids).',
-            fr: 'NetBird répond, mais aucun pair n’est dans les groupes du filtre : vérifiez leurs noms (ou identifiants).',
-          }
-        : {
-            en: 'NetBird answers, but the token sees no peer.',
-            fr: 'NetBird répond, mais le jeton ne voit aucun pair.',
-          },
+    noPeer: ({ filtered, ownPeersOnly }) =>
+      join(
+        filtered
+          ? {
+              en: 'NetBird answers, but no peer is in the groups of the filter: check their names (or ids).',
+              fr: 'NetBird répond, mais aucun pair n’est dans les groupes du filtre : vérifiez leurs noms (ou identifiants).',
+            }
+          : {
+              en: 'NetBird answers, but the token sees no peer.',
+              fr: 'NetBird répond, mais le jeton ne voit aucun pair.',
+            },
+        ownPeersOnly
+          ? OWN_PEERS_ONLY
+          : {
+              en: 'A token of the User role lists only the peers its user owns (none when the dashboard of regular users is restricted): use the token of a service user with the Auditor role (or Admin).',
+              fr: 'Un jeton au rôle User ne liste que les pairs de son utilisateur (aucun quand le tableau de bord des utilisateurs ordinaires est restreint) : utilisez le jeton d’un utilisateur de service au rôle Auditor (ou Admin).',
+            },
+      ),
     urlInvalid: {
       en: 'The address of the management server is not valid: leave it empty for NetBird Cloud, or type https://netbird.example.org of your own server, without a query.',
       fr: 'L’adresse du serveur de gestion n’est pas valide : laissez-la vide pour NetBird Cloud, ou saisissez https://netbird.example.org de votre serveur, sans paramètres.',
@@ -105,8 +116,8 @@ export const T = {
       fr: 'L’empreinte du certificat doit être une empreinte SHA-256 : 64 chiffres hexadécimaux, deux-points permis.',
     },
     tokenRefused: {
-      en: 'NetBird refused the access token (HTTP 401 or 403: wrong, expired, revoked, or without the right to read the peers). Gladys does not try again by itself: create a new token, paste it and save the configuration.',
-      fr: 'NetBird a refusé le jeton d’accès (HTTP 401 ou 403 : faux, expiré, révoqué, ou sans le droit de lire les pairs). Gladys ne réessaie pas seul : créez un nouveau jeton, collez-le et enregistrez la configuration.',
+      en: 'NetBird refused the access token on the list of the peers (HTTP 401 or 403: wrong, expired, revoked, or without the right to list peers). Gladys does not try again by itself: create a new token (a service user with the Auditor role), paste it and save the configuration.',
+      fr: 'NetBird a refusé le jeton d’accès sur la liste des pairs (HTTP 401 ou 403 : faux, expiré, révoqué, ou sans le droit de lister les pairs). Gladys ne réessaie pas seul : créez un nouveau jeton (un utilisateur de service au rôle Auditor), collez-le et enregistrez la configuration.',
     },
     tlsUntrusted: (delay) =>
       join(
@@ -175,7 +186,7 @@ export const T = {
   test: {
     ok: ({ total, connected }) => ({
       en: `Connected: ${connected} of ${total} ${plural(total, 'peer', 'peers')} connected. Add them from the Discovery tab.`,
-      fr: `Connecté : ${connected} ${plural(connected, 'pair connecté', 'pairs connectés')} sur ${total}. Ajoutez-les depuis l’onglet Découverte.`,
+      fr: `Connecté : ${connected} ${pluralFr(connected, 'pair connecté', 'pairs connectés')} sur ${total}. Ajoutez-les depuis l’onglet Découverte.`,
     }),
   },
   errors: {

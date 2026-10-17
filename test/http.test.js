@@ -60,15 +60,23 @@ test('GET, the size cap, no redirect followed', async () => {
     okJson(req, res);
   });
   try {
-    const get = await httpRequest(`${server.url}/a?b=1`, { timeout: 2000, maxBytes: 1000 });
+    const get = await httpRequest(`${server.url}/a?b=1`, {
+      timeout: 2000,
+      maxBytes: 1000,
+      allowHttp: true,
+    });
     assert.equal(get.status, 200);
     assert.equal(get.body.toString(), '[]');
     assert.equal(server.requests[0].method, 'GET');
     await assert.rejects(
-      httpRequest(`${server.url}/big`, { timeout: 2000, maxBytes: 1000 }),
+      httpRequest(`${server.url}/big`, { timeout: 2000, maxBytes: 1000, allowHttp: true }),
       (err) => err.code === CODES.TOO_LARGE,
     );
-    const moved = await httpRequest(`${server.url}/moved`, { timeout: 2000, maxBytes: 1000 });
+    const moved = await httpRequest(`${server.url}/moved`, {
+      timeout: 2000,
+      maxBytes: 1000,
+      allowHttp: true,
+    });
     assert.equal(moved.status, 302);
     assert.equal(server.requests.length, 3);
   } finally {
@@ -76,18 +84,42 @@ test('GET, the size cap, no redirect followed', async () => {
   }
 });
 
+test('plain http is refused unless a test allows it: nothing is sent', async () => {
+  const server = await serve(okJson);
+  try {
+    await assert.rejects(
+      httpRequest(server.url, { timeout: 2000, maxBytes: 1000, headers: { authorization: 'x' } }),
+      (err) => err.name === 'NetbirdError',
+    );
+    assert.equal(server.requests.length, 0);
+  } finally {
+    await server.close();
+  }
+});
+
+test('the client sends its user-agent', async () => {
+  const fake = createFakeNetbird();
+  const client = new NetbirdClient({
+    server: { base: 'https://x.test' },
+    token: TOKEN,
+    request: fake.request,
+  });
+  await client.peers();
+  assert.match(fake.requests[0].headers['user-agent'], /^gladys-netbird\/\d+\.\d+\.\d+$/);
+});
+
 test('no answer in time, nobody listening', async () => {
   const server = await serve(() => {}); // never answers
   try {
     await assert.rejects(
-      httpRequest(server.url, { timeout: 200, maxBytes: 1000 }),
+      httpRequest(server.url, { timeout: 200, maxBytes: 1000, allowHttp: true }),
       (err) => err.code === CODES.TIMEOUT,
     );
   } finally {
     await server.close();
   }
   await assert.rejects(
-    httpRequest(server.url, { timeout: 2000, maxBytes: 1000 }),
+    httpRequest(server.url, { timeout: 2000, maxBytes: 1000, allowHttp: true }),
     (err) => err.code === CODES.UNREACHABLE,
   );
 });
@@ -135,7 +167,7 @@ test('a header Node refuses (invisible character) is a failure, never a crash', 
   try {
     const headers = { authorization: 'Token nbp_a​b' };
     await assert.rejects(
-      httpRequest(plain.url, { timeout: 2000, maxBytes: 1000, headers }),
+      httpRequest(plain.url, { timeout: 2000, maxBytes: 1000, headers, allowHttp: true }),
       (err) => err.name === 'NetbirdError',
     );
     // After the handshake (secureConnect).
@@ -164,7 +196,7 @@ test('the client over the real transport: the token in Authorization only', asyn
       token: TOKEN,
       fingerprint: certFingerprint,
     });
-    assert.equal((await client.currentUser()).serviceUser, true);
+    assert.equal(await client.currentUser(), null, 'a service user gets 403 there');
     const { peers } = await client.peers();
     assert.equal(peers.length, 3);
     assert.deepEqual(await client.account(), {
@@ -180,6 +212,13 @@ test('the client over the real transport: the token in Authorization only', asyn
     await assert.rejects(client.peers(), (err) => isTokenRefused(err));
     fake.failures.push({ path: '/api/peers', status: 403, body: '<html>WAF</html>' });
     await assert.rejects(client.peers(), (err) => err.status === 403 && !isTokenRefused(err));
+    // Only the envelope of NetBird: { message: <text>, code: <the status> }.
+    fake.failures.push({ path: '/api/peers', status: 403, body: '{"error":"forbidden"}' });
+    await assert.rejects(client.peers(), (err) => err.status === 403 && !isTokenRefused(err));
+    fake.failures.push({ path: '/api/peers', status: 403, body: '{"message":"x","code":401}' });
+    await assert.rejects(client.peers(), (err) => err.status === 403 && !isTokenRefused(err));
+    fake.failures.push({ path: '/api/users/current', status: 401 });
+    assert.equal(await client.currentUser(), null, 'the peers decide');
     fake.failures.push({ path: '/api/accounts', status: 401 });
     await assert.rejects(client.account(), (err) => err.status === 401 && !isTokenRefused(err));
     fake.failures.push({ path: '/api/peers', status: 200, body: 'not json' });

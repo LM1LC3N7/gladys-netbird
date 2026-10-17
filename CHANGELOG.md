@@ -25,7 +25,12 @@ the notes of the version's GitHub Release.
   minutes (1 by default).
 - Strict TLS by default; a self-hosted certificate accepted only by its typed
   SHA-256 fingerprint, checked before the token is sent; http:// refused.
-- A refused token (HTTP 401, or a 403 of the API) stops everything until the
-  configuration is saved (salted HMAC kept in `/data`, never the token);
-  HTTP 429 and 5xx pause every request, bounded and kept in `/data`.
+- A refused token (HTTP 401, or a 403 of the API itself, on the list of the
+  peers) stops everything until the configuration is saved (salted HMAC
+  kept in `/data`, never the token); a service user token works (its 403 on
+  `/api/users/current` is ignored); HTTP 429 and 5xx pause every request,
+  bounded and kept in `/data`.
+- Every state within 250 per minute (counts, connected, login expired, then
+  the texts in turn); the status says when the token lists only its own
+  peers, and advises a service user with the Auditor role.
 - Button "Test the connection".

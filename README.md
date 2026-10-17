@@ -24,20 +24,25 @@ Gladys ⇄ SDK ⇄ src/app.js (NetbirdApp)
 ```
 
 - **Authentication**: a personal access token in the
-  `Authorization: Token <PAT>` header, nothing else. HTTP 401 (or a 403 with
-  a JSON body of the API) on `/api/users/current` or `/api/peers` is final:
-  a salted HMAC of the address and token is kept in `/data`, nothing is sent
-  again until the configuration is saved. HTTP 429 and 5xx pause every
-  request (Retry-After, 1 min to 6 h, never under the poll interval, kept in
-  `/data`); other failures retry from the poll interval, doubling to 30 min.
+  `Authorization: Token <PAT>` header, nothing else; a service user with
+  the Auditor role is recommended (the User role lists only its own peers).
+  HTTP 401 (or a 403 carrying the NetBird error envelope
+  `{ message, code }`) on `/api/peers` is final: a salted HMAC of the
+  address and token is kept in `/data`, nothing is sent again until the
+  configuration is saved. `/api/users/current` is optional (NetBird answers
+  403 to every service user): 401 / 403 / 404 / 405 there are ignored. HTTP
+  429 and 5xx pause every request (Retry-After, 1 min to 6 h, never under
+  the poll interval, kept in `/data`, removed after a reading that works);
+  other failures retry from the poll interval, doubling to 30 min.
 - **TLS**: strict by default; a self-hosted certificate is accepted only by
   a typed SHA-256 fingerprint, checked on the handshake before the request
   (and the token) is written. `http://` is refused.
 - **Reading** (every 60 s by default): `GET /api/peers`, filtered by groups;
   `GET /api/accounts` once an hour for the login expiration (secondary: its
-  failure never blocks the peers). External ids: `peer:<NetBird id>`,
-  `network:main`. Texts are budgeted under 250 states/min; connected, login
-  expired and counts always go.
+  failure never blocks the peers). One reading at a time (loop, Discovery).
+  External ids: `peer:<NetBird id>`, `network:main`. Every state is
+  budgeted under 250 states/min: counts, then connected, then login
+  expired, then the texts in turn.
 - **Triggers**: `peer_connected`, `peer_disconnected`, `peer_login_expired`,
   compared with the previous reading only (none at start, none after a
   failure, none for a new peer).

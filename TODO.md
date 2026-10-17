@@ -33,14 +33,33 @@ up to date at the end of every milestone.
       SDK's fake Gladys, a fake NetBird (in memory and on loopback https) and
       loopback http / https servers. **Never tested with a real NetBird
       account.** No Docker on this PC: no e2e test in a container.
+- [x] **Review corrections** (2026-10-17, review checked against
+      netbirdio/netbird main and docs.netbird.io): `/api/users/current` is
+      optional (403 for every service user: GetCurrentUserInfo), only
+      `/api/peers` decides a refusal, and only with the NetBird envelope
+      `{ message, code === status }`; Auditor service user recommended (the
+      User role lists only its own peers, none when the dashboard of regular
+      users is restricted), hint from `permissions.modules.peers.read` /
+      `role` / `is_restricted`, also with no peer; every state within the
+      budget (counts > connected > login expired > texts in turn, a failed
+      publication counted); the capped end of a pause written back, the
+      pause removed after a reading that works; `onDeviceUpdated` (forgets
+      only that device); one reading at a time; badges `unreachable` on a
+      refused token or an invalid configuration; http refused in the
+      transport itself; more TLS error codes; `socket.on('error')`;
+      user-agent `gladys-netbird/<version>`; more invisible characters;
+      `app.netbird.io` read as `api.netbird.io`; docs (last seen, users
+      endpoint, re-registered peer, counts beyond 500); French singular for 0.
 - [ ] **Milestone 2 — real NetBird** (a tester with NetBird Cloud and one
       with a self-hosted server): record real answers as fixtures (token and
       personal data removed), fix what differs. To check first:
   - the exact error bodies and statuses of the API: 401 for a wrong /
-    expired / revoked PAT everywhere?; what a User-role token (service user
-    or regular user) gets on `/api/peers` (403? only its own peers? an
-    empty list when "Restrict regular users" is on?) and on `/api/accounts`
-    (403?); whether `/api/users/current` works for a service user token;
+    expired / revoked PAT everywhere?; whether the Auditor role can be
+    given to a service user (NetBird Cloud and self-hosted), and what it
+    gets on `/api/peers` and `/api/accounts`; what a User-role token gets
+    on `/api/peers` (its own peers, an empty list when the dashboard of
+    regular users is restricted: as read in the source); the 403 of
+    `/api/users/current` for a service user (read in the source);
   - does NetBird Cloud answer 429 (rate limit, Retry-After) and how often a
     reading every minute is fine; a WAF / Cloudflare 403 page in front of
     `api.netbird.io`?;
@@ -106,18 +125,30 @@ up to date at the end of every milestone.
   (403 for a regular user, anything) never blocks the peers and is never a
   token refusal; a 429 there pauses everything after the peers are
   published.
-- **Token refusal**: HTTP 401 on `/api/users/current` or `/api/peers`, or a
-  403 there whose body is a JSON object (the API itself; a 403 HTML page of
-  a proxy, a WAF or Cloudflare is transient and retried, lesson of wave 1).
+- **Token refusal** (review, blocking): HTTP 401 on `/api/peers`, or a 403
+  there carrying the NetBird error envelope (`message` a string, `code`
+  equal to the status; any other 403 body, such as the HTML page of a
+  proxy, a WAF or Cloudflare, is transient and retried, lesson of wave 1).
+  `/api/users/current` never decides: NetBird answers PermissionDenied (403)
+  to every service user there, so 401 / 403 / 404 / 405 give "user
+  unknown" and the peers decide; 429 / 5xx there pause like any reading.
   Final: a salted HMAC-SHA-256 of the address and token (random salt
   generated once in `/data`) is kept; restarts, reconnections to Gladys and
   "Test the connection" send nothing; only saving the configuration tries
-  again (brief). `/api/users/current` answering 404 / 405 (older server) is
-  skipped.
+  again (brief). The badges turn `unreachable`.
+- **Recommended token** (review): a service user with the **Auditor** role
+  (reads everything, changes nothing), Admin otherwise; never the User
+  role, which lists only the peers its user owns (none for a service user,
+  none at all when the dashboard of regular users is restricted). When the
+  user is readable (a regular user), `ownPeersOnly` = `is_restricted`, or
+  role `user`, or `permissions.modules.peers.read` false: said in the
+  status, with or without peers; an empty list always gets the Auditor
+  advice.
 - **Pauses**: HTTP 429 pauses every path for its Retry-After, bounded
   max(1 min, poll interval) to 6 h; 5xx pauses for the back-off delay (or a
   longer Retry-After, up to 6 h). Both are persisted in `/data` per server
-  address and capped when read back (now + 6 h). Prudent choice: unlike
+  address and capped when read back (now + 6 h); the capped end is written
+  back, and the entry is removed after a reading that works. Prudent choice: unlike
   gladys-portainer, saving the configuration does NOT lift a pause (it would
   let a user hammer a rate-limited API; the pause is bounded anyway). Other
   failures retry from max(1 min, poll interval), doubling up to 30 min;
@@ -140,22 +171,30 @@ up to date at the end of every milestone.
   decided on the handshake before the request. No trust on first use (the
   token would go to whoever answers first). `http://` refused outright
   (prudent: the PAT would cross the network in clear).
-- **Address**: empty = NetBird Cloud `https://api.netbird.io`; a bare host is
-  https; a path is kept and a trailing `/api` dropped; credentials, query
+- **Address**: empty = NetBird Cloud `https://api.netbird.io` (the dashboard
+  `app.netbird.io` typed on port 443 is read as it); a bare host is https;
+  the transport refuses anything but https by itself (plain http only with
+  `allowHttp`, set by the loopback tests alone); a path is kept and a trailing `/api` dropped; credentials, query
   and fragment refused.
 - **Privacy**: only what Gladys shows is kept: no public IP
   (`connection_ip`), no e-mail, no user name, no city or country, no
-  serial number; the user of the token gives only `is_restricted` (said in
-  the status when the token sees only its own peers).
+  serial number; the user of the token gives only its role, `is_restricted`
+  and `permissions.modules.peers.read` (said in the status when the token
+  lists only its own peers).
 - **Transport badge**: `cloud` (the management server is reached over the
   Internet for NetBird Cloud; kept for self-hosted too) when NetBird
   answers and the peer is in the reading, `unreachable` otherwise (a peer
   deleted in NetBird or out of the filter gets no state and the
   `unreachable` badge). A disconnected peer stays `cloud`: its data is read.
-- **Rate of states**: POST /state admits 300 states/min; the integration
-  keeps a sliding window under 250. Connected, login expired and counts are
-  change-only and always sent; texts are first reduced to those that
-  changed, then cut to what is left of the window. Badges in calls of 100.
+- **Rate of states** (review): POST /state admits 300 states/min; the
+  integration keeps a sliding window under 250 for EVERY state. Only the
+  values that changed (own memory of what Gladys accepted, forgotten per
+  device when it is created, updated or deleted) are counted, by priority:
+  counts, connected, login expired, then the texts, which take turns
+  (rotating start) when cut. A failed publication still counts in the
+  window. 200 created peers start over a few minutes (tested). Badges in
+  calls of 100. One reading at a time: the loop and Discovery share the
+  one in flight.
   Scene events: at most 30 per reading. Caps: 500 peers (the rest counted
   in the network device and said in the status).
 - **Triggers**: compared with the previous successful reading only:

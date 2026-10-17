@@ -9,6 +9,7 @@ export function registerHandlers(gladys, app, logger) {
   // --- Discovery and device lifecycle --------------------------------------------
   gladys.onScanRequest(() => app.publishDiscovery());
   gladys.onDeviceCreated((device) => app.deviceCreated(device));
+  gladys.onDeviceUpdated((device) => app.deviceUpdated(device));
   gladys.onDeviceDeleted((device) => app.deviceDeleted(device));
 
   // --- Read only: every command is refused with a clear message -------------------

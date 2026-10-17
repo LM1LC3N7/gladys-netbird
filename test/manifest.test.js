@@ -97,7 +97,18 @@ test('the configuration matches the code; the secret is never said encrypted', (
   );
   assert.match(fields.token.description.fr, /jamais réaffiché, envoyé seulement au serveur/);
   assert.match(fields.url.description.en, /in clear/, 'why http is refused');
-  assert.doesNotMatch(JSON.stringify(manifest), /chiffré|encrypted/i, 'a secret is not encrypted');
+  for (const [name, text] of [
+    ['manifest', JSON.stringify(manifest)],
+    ['docs/en.md', read('docs/en.md')],
+    ['docs/fr.md', read('docs/fr.md')],
+    ['README.md', read('README.md')],
+  ]) {
+    // "Let's Encrypt" (the authority) is no claim about the token.
+    const claims = text.replace(/Let's Encrypt/g, '');
+    assert.doesNotMatch(claims, /chiffr|encrypt/i, `${name}: a secret is not encrypted`);
+  }
+  assert.match(fields.intro.description.en, /Auditor role/, 'the role that sees every peer');
+  assert.match(fields.intro.description.fr, /rôle Auditor/);
 });
 
 test('sections store nothing; links https', () => {

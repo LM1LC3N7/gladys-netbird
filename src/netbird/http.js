@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 // The only network access of the integration: one GET to NetBird on
-// node:https (node:http is kept for the loopback tests only: the
-// configuration refuses http://). A deadline for the whole exchange, a size
+// node:https (plain http only with `allowHttp`, which the loopback tests
+// alone set: the configuration refuses http:// as well). A deadline for the whole exchange, a size
 // cap on the body, no redirect followed. Resolves { status, headers, body }
 // for any status; rejects a NetbirdError for the transport failures.
 //
@@ -30,6 +30,17 @@ const TLS_ERRORS = new Set([
   'CERT_NOT_YET_VALID',
   'ERR_TLS_CERT_ALTNAME_INVALID',
   'CERT_SIGNATURE_FAILURE',
+  'CERT_UNTRUSTED',
+  'CERT_REJECTED',
+  'CERT_REVOKED',
+  'INVALID_CA',
+  'INVALID_PURPOSE',
+  'CERT_CHAIN_TOO_LONG',
+  'PATH_LENGTH_EXCEEDED',
+  'UNABLE_TO_DECRYPT_CERT_SIGNATURE',
+  'UNABLE_TO_DECODE_ISSUER_PUBLIC_KEY',
+  'ERR_TLS_CERT_ALTNAME_FORMAT',
+  'HOSTNAME_MISMATCH',
 ]);
 
 function transportError(err) {
@@ -61,10 +72,18 @@ export function normalizeFingerprint(value) {
  * @param {number} options.timeout ms for the whole exchange
  * @param {number} options.maxBytes body size cap
  * @param {{ fingerprint?: string | null }} [options.tls]
+ * @param {boolean} [options.allowHttp] plain http (loopback tests only; the app never sets it)
  */
-export function httpRequest(url, { headers = {}, timeout, maxBytes, tls: trust = {} } = {}) {
+export function httpRequest(
+  url,
+  { headers = {}, timeout, maxBytes, tls: trust = {}, allowHttp = false } = {},
+) {
   return new Promise((resolve, reject) => {
     const target = new URL(url);
+    if (target.protocol !== 'https:' && !(allowHttp && target.protocol === 'http:')) {
+      reject(new NetbirdError(CODES.BAD_ANSWER, `Refused: ${target.protocol} is not https`));
+      return;
+    }
     const host = target.hostname.replace(/^\[(.*)\]$/, '$1');
     const port = Number(target.port) || (target.protocol === 'https:' ? 443 : 80);
     const servername = net.isIP(host) ? undefined : host;
@@ -149,7 +168,8 @@ export function httpRequest(url, { headers = {}, timeout, maxBytes, tls: trust =
 
     // Typed fingerprint: handshake first, compare, then write the request.
     socket = tls.connect({ host, port, servername, rejectUnauthorized: false });
-    socket.once('error', (err) => finish(transportError(err)));
+    // `on`, not `once`: a second error event on this socket must not crash.
+    socket.on('error', (err) => finish(transportError(err)));
     socket.once('secureConnect', () => {
       const cert = socket.getPeerCertificate();
       const fingerprint = String(cert?.fingerprint256 ?? '').toUpperCase();

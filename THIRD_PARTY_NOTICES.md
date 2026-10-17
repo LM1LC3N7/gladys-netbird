@@ -15,8 +15,9 @@ owners; this integration is unofficial and not affiliated with them.
 
 ## prohand/gladys-tailscale
 
-<https://github.com/prohand/gladys-tailscale> (Apache License 2.0, read at
-commit `40e15be`, 2026-10-14), a Gladys integration of the same field (the
+<https://github.com/prohand/gladys-tailscale> (Apache-2.0 declared in its
+`package.json`; the repository ships no LICENSE file; read at commit
+`40e15be`, 2026-10-14), a Gladys integration of the same field (the
 machines of a mesh VPN): the idea of one Gladys device per machine keyed on
 its stable id, and of scene triggers on connection changes. No code is
 copied: the devices, features and triggers of this integration are its own.

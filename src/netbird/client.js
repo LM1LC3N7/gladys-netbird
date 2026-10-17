@@ -1,7 +1,8 @@
 // -----------------------------------------------------------------------------
 // The REST management API of NetBird (NetBird Cloud at api.netbird.io, or a
 // self-hosted management server), with a personal access token. Read only:
-//   GET /api/users/current   the user of the token (checks the token)
+//   GET /api/users/current   the user of the token (optional: a service user
+//                            gets 403, an older server 404 / 405)
 //   GET /api/peers           every peer the token sees
 //   GET /api/accounts        the account settings (login expiration)
 // The token goes in the `Authorization: Token <PAT>` header only (never in a
@@ -9,8 +10,9 @@
 // documented API.
 // -----------------------------------------------------------------------------
 
+import { readFileSync } from 'node:fs';
 import { MAX_BYTES, TIMEOUTS } from '../constants.js';
-import { CODES, NetbirdError } from './errors.js';
+import { CODES, NetbirdError, isNetbirdEnvelope } from './errors.js';
 import { httpRequest } from './http.js';
 import { parseAccount, parsePeers, parseUser } from './parse.js';
 
@@ -27,15 +29,17 @@ const retryAfterMs = (value) => {
   return seconds !== null && seconds >= 0 ? seconds * 1000 : null;
 };
 
-/** Is this body a JSON object (an error of the API itself, not a proxy page)? */
-function isJsonObject(body) {
+/** gladys-netbird/<version>, from package.json (copied into the image). */
+export const USER_AGENT = (() => {
   try {
-    const value = JSON.parse(body.toString('utf8'));
-    return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+    const { version } = JSON.parse(
+      readFileSync(new URL('../../package.json', import.meta.url), 'utf8'),
+    );
+    return typeof version === 'string' ? `gladys-netbird/${version}` : 'gladys-netbird';
   } catch {
-    return false;
+    return 'gladys-netbird';
   }
-}
+})();
 
 export class NetbirdClient {
   /**
@@ -61,7 +65,7 @@ export class NetbirdClient {
   async get(path, { maxBytes }) {
     if (this.closed) throw new NetbirdError(CODES.CLOSED, 'Client closed');
     const response = await this.request(`${this.server.base}${path}`, {
-      headers: { authorization: `Token ${this.token}` },
+      headers: { authorization: `Token ${this.token}`, 'user-agent': USER_AGENT },
       timeout: TIMEOUTS.API,
       maxBytes,
       tls: this.fingerprint ? { fingerprint: this.fingerprint } : {},
@@ -71,7 +75,7 @@ export class NetbirdClient {
         status: response.status,
         retryAfterMs: retryAfterMs(response.headers?.['retry-after']),
         path,
-        json: isJsonObject(response.body ?? Buffer.alloc(0)),
+        envelope: isNetbirdEnvelope(response.body ?? Buffer.alloc(0), response.status),
       });
     }
     try {
@@ -82,14 +86,16 @@ export class NetbirdClient {
   }
 
   /**
-   * The user of the token, or null when the server has no such endpoint
-   * (an older self-hosted server: 404 / 405).
+   * The user of the token, or null when it cannot be read: NetBird answers
+   * 403 to every service user, an older server 404 / 405, and a 401 is left
+   * to /api/peers to decide. Only 429, 5xx and transport failures throw
+   * (they pause or retry like any reading).
    */
   async currentUser() {
     try {
       return parseUser(await this.get('/api/users/current', { maxBytes: MAX_BYTES.USER }));
     } catch (err) {
-      if (err.code === CODES.HTTP && (err.status === 404 || err.status === 405)) return null;
+      if (err.code === CODES.HTTP && [401, 403, 404, 405].includes(err.status)) return null;
       throw err;
     }
   }

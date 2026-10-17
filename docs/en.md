@@ -24,23 +24,27 @@ Unofficial integration, not affiliated with NetBird.
 ## Before you start: a token that only reads
 
 1. In the NetBird dashboard, open **Team → Service Users** and create a
-   service user `gladys` with the **User** role (a service user is not a
-   person: its token does not stop working when someone leaves). If your
-   plan has no service users, use **Team → Users** and your own user.
+   service user `gladys` with the **Auditor** role: it reads every peer and
+   changes nothing (a service user is not a person: its token does not stop
+   working when someone leaves). If the Auditor role is not offered for a
+   service user on your server, use **Admin** (Gladys still only reads, but
+   the token could change everything: keep it safe).
 2. Open the user, **Create Token**, name it `gladys`, pick an expiration
    and copy the token (it starts with `nbp_`): NetBird shows it only once.
-3. Check that this user sees every peer: with the **User** role, NetBird may
-   show a regular user only its own peers (account setting "Restrict regular
-   users"); the connection status of the integration says so when it is the
-   case. An **Admin** token sees everything, but could change everything:
-   Gladys only reads, yet a token with fewer rights is safer.
+3. **Not the User role**: a token of the User role lists only the peers its
+   own user registered, and none at all when the account restricts the
+   dashboard of regular users ("Restrict dashboard for regular users"). A
+   service user owns no peer: with the User role it would see nothing. When
+   the integration can tell (a regular user), the connection status says so.
 4. The expiration dates of the peers (login expires) come from the account
-   settings, which a User token may not be allowed to read: then they stay
-   empty, the rest works.
+   settings: a token that may not read them leaves these dates empty, the
+   rest works.
 
 ## Configuration
 
-- **Management server**: empty for NetBird Cloud (`https://api.netbird.io`).
+- **Management server**: empty for NetBird Cloud (its API is
+  `https://api.netbird.io`; the dashboard address `app.netbird.io` is read as
+  it).
   Self-hosted: the https address of your server, the one of the dashboard
   (`https://netbird.example.org`, a port and a path are kept, a trailing
   `/api` is dropped). `http://` is refused: the token would cross the network
@@ -61,7 +65,9 @@ Unofficial integration, not affiliated with NetBird.
   commas. Only their peers become devices and are counted. Empty: every peer
   the token sees.
 - **Refresh**: every minute (default) to every 10 minutes. One request per
-  reading (the peers), plus the account settings once an hour.
+  reading (the peers), plus the account settings once an hour, and the user
+  of the token (`/api/users/current`) at start and at every new attempt after
+  a failure. A service user gets 403 there: that is expected and ignored.
 
 Then open the **Discovery** tab and create the peers and the network you
 want to follow. Only the created devices get their states.
@@ -70,8 +76,9 @@ want to follow. Only the created devices get their states.
 
 - **Connected** (1 / 0): what NetBird says about the peer right now.
   Nothing is published while NetBird does not say.
-- **Last seen**: the last time the management server heard from the peer,
-  as `2026-10-17 08:00 UTC` (UTC, the time zone of NetBird).
+- **Last seen**: the last time the peer connected to the management server
+  (or changed its status there), as `2026-10-17 08:00 UTC` (UTC, the time
+  zone of NetBird). It may not move while the peer stays connected.
 - **NetBird IP**: the address of the peer inside the NetBird network
   (`100.x.y.z`). Its public address is never read into Gladys.
 - **Client version**: the version of the NetBird client on the peer. The API
@@ -83,8 +90,13 @@ want to follow. Only the created devices get their states.
 - **Login expires**: the date the session ends (last login plus the
   expiration of the account), `—` when it never expires, nothing while it
   cannot be known (a token that may not read the account settings).
-- **Peers connected / Peers** (network device): the counts of the followed
-  peers (those of the group filter, when there is one).
+- **Peers connected / Peers** (network device): the counts of the peers
+  of the group filter (all, without a filter), including those beyond the
+  500 that become devices.
+- Gladys accepts 300 states per minute from an integration: this one sends
+  at most 250, the counts first, then connected, then login expired, then
+  the texts (in turn). With many peers created at once, the first values
+  arrive over a few minutes.
 
 ## Scene triggers
 
@@ -101,12 +113,15 @@ fires nothing. At most 30 events per reading.
 
 ## Connection problems
 
-- **Token refused** (HTTP 401, or a 403 answered by the NetBird API on the
-  user or the peers: wrong, expired, revoked, or without the right to read
-  the peers): Gladys stops and does not try again by itself, even after a
-  restart or when Gladys reconnects. Create a new token, paste it and save
-  the configuration: only saving tries again. A 403 page that does not come
-  from the API (a proxy or a firewall in front of it) is retried normally.
+- **Token refused** (HTTP 401, or a 403 answered by the NetBird API itself,
+  on the list of the peers: wrong, expired, revoked, or without the right to
+  list peers): Gladys stops and does not try again by itself, even after a
+  restart or when Gladys reconnects. Create a new token (a service user
+  with the Auditor role), paste it and save the configuration: only saving
+  tries again. A 403 page that does not come from the API (a proxy or a
+  firewall in front of it) is retried normally. A refusal on the user of the
+  token (`/api/users/current`, always 403 for a service user) never stops
+  anything.
 - **NetBird busy** (HTTP 429) or **server error** (HTTP 5xx): every request
   pauses, as long as NetBird asks (Retry-After) within 1 minute and 6 hours,
   never less than the refresh interval. The pause is kept in `/data`: a
@@ -122,8 +137,10 @@ fires nothing. At most 30 events per reading.
 
 ## Limits
 
-- One NetBird account per integration; 500 peers at most (narrow the group
-  filter beyond).
+- One NetBird account per integration; 500 peers at most become devices
+  (narrow the group filter beyond; the counts include them all).
+- A peer deleted in NetBird and registered again gets a new NetBird id: it
+  becomes a new device (the old one stays without values).
 - The network device is one per integration (`network:main`): pointing the
   integration at another account keeps the same device.
 - Read only in this version: no command (delete a peer, change a rule).

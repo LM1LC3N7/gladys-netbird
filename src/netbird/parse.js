@@ -13,13 +13,19 @@ export const ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 /** Dates before 2000 are the zero time of Go (`0001-01-01T00:00:00Z`): unknown. */
 const MIN_DATE = Date.UTC(2000, 0, 1);
 
-/** Control characters, zero-width and bidirectional marks: replaced by a space. */
+/**
+ * Control characters, zero-width characters, bidirectional marks and
+ * isolates, word joiner and invisible operators, BOM: replaced by a space.
+ */
 const INVISIBLE = new RegExp(
   `[${[
     [0x00, 0x1f],
     [0x7f, 0x9f],
     [0x200b, 0x200f],
     [0x2028, 0x202e],
+    [0x2060, 0x2064],
+    [0x2066, 0x2069],
+    [0xfeff, 0xfeff],
   ]
     .map(
       ([from, to]) =>
@@ -122,15 +128,23 @@ export function parseAccount(json) {
 }
 
 /**
- * GET /api/users/current -> { serviceUser, restricted, role }: whether the
- * token sees every peer. No name, no e-mail is kept.
+ * GET /api/users/current -> { serviceUser, restricted, role, peersRead,
+ * ownPeersOnly }: whether the token sees every peer. No name, no e-mail is
+ * kept. In NetBird, a user without the `peers.read` permission (the User
+ * role) lists only the peers it owns, and none at all when the account
+ * restricts the dashboard of regular users (`is_restricted`).
  */
 export function parseUser(json) {
   if (!json || typeof json !== 'object' || Array.isArray(json)) return null;
+  const role = typeof json.role === 'string' ? json.role.slice(0, 20).toLowerCase() : null;
+  const peersRead = bool(json.permissions?.modules?.peers?.read);
+  const restricted = json.permissions?.is_restricted === true;
   return {
     serviceUser: json.is_service_user === true,
-    restricted: json.permissions?.is_restricted === true,
-    role: typeof json.role === 'string' ? json.role.slice(0, 20) : null,
+    restricted,
+    role,
+    peersRead,
+    ownPeersOnly: restricted || role === 'user' || peersRead === false,
   };
 }
 

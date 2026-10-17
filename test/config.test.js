@@ -11,6 +11,7 @@ test('the server address: NetBird Cloud by default, self-hosted in https only', 
     cloud: true,
   });
   assert.equal(parseServerUrl('https://api.netbird.io/api').cloud, true);
+  assert.equal(parseServerUrl('https://app.netbird.io').cloud, true, 'the dashboard: its API');
   assert.equal(parseServerUrl('netbird.example.org').base, 'https://netbird.example.org');
   assert.equal(
     parseServerUrl('https://NetBird.example.org:443/').base,

@@ -8,8 +8,8 @@
 //                  expiry, the counts of the network, and the triggers
 //                  `peer_connected`, `peer_disconnected`, `peer_login_expired`;
 //                  the account settings (login expiration) once an hour
-//   failures       a token refused (401 / 403 of the API on /api/users/current
-//                  or /api/peers) stops everything until the configuration is
+//   failures       a token refused (401, or 403 in the envelope of the API, on
+//                  /api/peers only) stops everything until the configuration is
 //                  saved; HTTP 429 and 5xx pause every request (bounded, kept
 //                  in /data); anything else is retried, never faster than the
 //                  poll interval, doubling up to 30 min
@@ -44,6 +44,8 @@ const TEST_BUDGET_MS = 25_000;
 /** Entries per publishTransports call (the SDK refuses more). */
 export const TRANSPORTS_PER_CALL = 100;
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+/** The value of a state entry, number or text, as one comparable key. */
+const valueOf = (s) => (s.text !== undefined ? `t:${s.text}` : `s:${s.state}`);
 
 export class NetbirdApp {
   /**
@@ -90,8 +92,12 @@ export class NetbirdApp {
      * Gladys does not skip the wait. In memory only.
      */
     this.retryWait = null;
-    /** Texts last accepted by Gladys (feature -> value), to budget only changes. */
-    this.publishedTexts = new Map();
+    /** Values last accepted by Gladys (feature -> value), to budget only changes. */
+    this.published = new Map();
+    /** Where the next cut of the texts starts (they take turns under the budget). */
+    this.textCursor = 0;
+    /** The reading in flight: one at a time (loop, Discovery). */
+    this.reading = null;
     this.reset();
   }
 
@@ -112,7 +118,7 @@ export class NetbirdApp {
     this.user = null;
     this.discoveredKey = null;
     this.transports = new Map();
-    this.publishedTexts.clear();
+    this.published.clear();
   }
 
   /** A failure is never read again faster than the poll interval. */
@@ -194,19 +200,19 @@ export class NetbirdApp {
       const message = { http: T.status.urlHttp, credentials: T.status.urlCredentials }[
         config.urlError
       ];
-      await this.setStatus(false, message ?? T.status.urlInvalid);
+      await this.stopWith(message ?? T.status.urlInvalid);
       return;
     }
     if (!config.token) {
-      await this.setStatus(false, T.status.missingToken);
+      await this.stopWith(T.status.missingToken);
       return;
     }
     if (config.tokenInvalid) {
-      await this.setStatus(false, T.status.tokenInvalid);
+      await this.stopWith(T.status.tokenInvalid);
       return;
     }
     if (config.fingerprintInvalid) {
-      await this.setStatus(false, T.status.fingerprintInvalid);
+      await this.stopWith(T.status.fingerprintInvalid);
       return;
     }
     // A token NetBird refused with these very values is not tried again
@@ -216,7 +222,7 @@ export class NetbirdApp {
     if (refused && refused === (await this.refusalKey(config)) && !force) {
       this.blocked = true;
       this.logger.warn('Access token refused earlier: not tried again');
-      await this.setStatus(false, T.status.tokenRefused);
+      await this.stopWith(T.status.tokenRefused);
       return;
     }
     if (refused) await this.store.set('refusals', base, null);
@@ -232,6 +238,9 @@ export class NetbirdApp {
     // written by hand).
     const stored = Number(this.store.get('meta', this.pauseKey())) || 0;
     const pausedUntil = Math.min(stored, this.now() + INTERVALS.BUSY_MAX_MS);
+    // The capped end is written back: the next reading of the file (another
+    // restart) does not cap from a later "now" again.
+    if (pausedUntil < stored) await this.store.set('meta', this.pauseKey(), String(pausedUntil));
     if (this.now() < pausedUntil) {
       this.pausedUntil = pausedUntil;
       const delay = pausedUntil - this.now();
@@ -267,6 +276,12 @@ export class NetbirdApp {
 
   pauseKey() {
     return `pausedUntil|${this.config.server?.base}`;
+  }
+
+  /** Stopped before any request (configuration, refused token): status and badges. */
+  async stopWith(message) {
+    await this.publishTransports();
+    await this.setStatus(false, message);
   }
 
   schedule(delay, task) {
@@ -312,6 +327,13 @@ export class NetbirdApp {
 
   async loop(generation, epoch) {
     if (!this.current(generation, epoch)) return;
+    if (this.reading) {
+      // A Discovery reading is in flight: it is this round's (its failure
+      // takes its own path).
+      await this.reading.catch(() => {});
+      if (this.current(generation, epoch)) this.scheduleLoop(this.pollMs(), generation);
+      return;
+    }
     try {
       await this.refresh({ publish: false });
     } catch (err) {
@@ -409,11 +431,24 @@ export class NetbirdApp {
    * secondary: their failure never blocks the peers (a 429 there pauses
    * everything once the peers are published).
    */
-  async refresh({ publish }) {
+  refresh(options) {
+    const reading = this.read(options).finally(() => {
+      if (this.reading === reading) this.reading = null;
+    });
+    this.reading = reading;
+    return reading;
+  }
+
+  async read({ publish }) {
     const client = this.client;
     if (!client) return;
     const { peers: all } = await client.peers();
     if (client !== this.client) return;
+    // A pause asked earlier is over (the reading worked): forget it.
+    if (this.store.get('meta', this.pauseKey())) {
+      await this.store.set('meta', this.pauseKey(), null);
+    }
+    this.pausedUntil = 0;
 
     let busy = null;
     if (this.accountAt === null || this.now() - this.accountAt >= INTERVALS.ACCOUNT_MS) {
@@ -475,10 +510,13 @@ export class NetbirdApp {
 
   okMessage() {
     const filtered = Boolean(this.config.filter);
-    if (!this.counts || this.counts.total === 0) return T.status.noPeer(filtered);
+    const ownPeersOnly = this.user?.ownPeersOnly === true;
+    if (!this.counts || this.counts.total === 0) {
+      return T.status.noPeer({ filtered, ownPeersOnly });
+    }
     return T.status.ok({
       ...this.counts,
-      restricted: this.user?.restricted === true,
+      ownPeersOnly,
       capped: this.capped,
       filtered,
     });
@@ -507,6 +545,12 @@ export class NetbirdApp {
 
   /** Discovery (scan button): read again when connected, else what is known. */
   async publishDiscovery() {
+    if (this.reading) {
+      // A reading is in flight: no second request, publish what it brings.
+      await this.reading.catch(() => {});
+      await this.publishDiscovered();
+      return;
+    }
     if (this.online && !this.paused() && this.client) {
       const generation = this.generation;
       const done = await this.refresh({ publish: true }).then(
@@ -527,27 +571,29 @@ export class NetbirdApp {
   }
 
   /**
-   * The states of the created devices: connected, login expired and the
-   * counts always (change-only); the texts (last seen, IP, version, expiry)
-   * within what is left of the minute budget. A created peer missing from
-   * the reading (deleted in NetBird, out of the filter) gets nothing.
+   * The states of the created devices, in four groups by priority: the
+   * counts, connected, login expired, the texts (last seen, IP, version,
+   * expiry). A created peer missing from the reading (deleted in NetBird,
+   * out of the filter) gets nothing.
    */
   statesOf() {
     const created = createdDevices(this.gladys);
-    const states = [];
+    const counts = [];
+    const connected = [];
+    const expired = [];
     const texts = [];
     for (const { peerId } of created.peers) {
       const peer = this.peers.get(peerId);
       if (!peer) continue;
       const ids = peerIds(this.gladys, peerId);
       if (peer.connected !== null) {
-        states.push({
+        connected.push({
           device_feature_external_id: ids.feature(FEATURES.CONNECTED),
           state: peer.connected ? 1 : 0,
         });
       }
       if (peer.loginExpired !== null) {
-        states.push({
+        expired.push({
           device_feature_external_id: ids.feature(FEATURES.LOGIN_EXPIRED),
           state: peer.loginExpired ? 1 : 0,
         });
@@ -564,7 +610,7 @@ export class NetbirdApp {
     }
     if (created.network && this.counts) {
       const ids = networkIds(this.gladys);
-      states.push(
+      counts.push(
         {
           device_feature_external_id: ids.feature(FEATURES.CONNECTED_COUNT),
           state: this.counts.connected,
@@ -572,36 +618,56 @@ export class NetbirdApp {
         { device_feature_external_id: ids.feature(FEATURES.TOTAL_COUNT), state: this.counts.total },
       );
     }
-    return { states, texts };
+    return { counts, connected, expired, texts };
   }
 
+  /**
+   * Publish what changed, every state within the minute budget (POST /state
+   * admits 300 per minute; this integration stays under 250): the counts
+   * first, then connected, then login expired, then the texts, which take
+   * turns when they are cut. What is held back goes at a later reading.
+   */
   async publishPeerStates() {
-    const { states, texts } = this.statesOf();
-    await this.publish(states);
-    // The unchanged texts cost nothing: the budget applies to the changes.
-    let list = texts.filter(
-      (s) => this.publishedTexts.get(s.device_feature_external_id) !== s.text,
-    );
-    const remaining = this.budget.remaining();
-    if (list.length > remaining) {
-      this.logger.debug(`${list.length - remaining} text(s) held back (state budget)`);
-      list = list.slice(0, remaining);
+    const { counts, connected, expired, texts } = this.statesOf();
+    const changed = (list) =>
+      list.filter((s) => this.published.get(s.device_feature_external_id) !== valueOf(s));
+    let room = this.budget.remaining();
+    const list = [];
+    let held = 0;
+    for (const group of [counts, connected, expired]) {
+      const fresh = changed(group);
+      list.push(...fresh.slice(0, room));
+      held += Math.max(0, fresh.length - room);
+      room = Math.max(0, room - fresh.length);
     }
-    if (await this.publish(list)) {
-      for (const s of list) this.publishedTexts.set(s.device_feature_external_id, s.text);
+    const freshTexts = changed(texts);
+    if (freshTexts.length <= room) {
+      list.push(...freshTexts);
+    } else {
+      const start = freshTexts.length > 0 ? this.textCursor % freshTexts.length : 0;
+      for (let i = 0; i < room; i += 1) list.push(freshTexts[(start + i) % freshTexts.length]);
+      this.textCursor = start + room;
+      held += freshTexts.length - room;
     }
-  }
-
-  /** Change-only; resolves true when Gladys took them. */
-  async publish(list) {
-    if (list.length === 0) return true;
+    if (held > 0) this.logger.debug(`${held} state(s) held back (state budget)`);
+    if (list.length === 0) return;
     try {
       const result = await this.gladys.publishChangedStates(list);
       this.budget.record(result?.count ?? list.length);
-      return true;
+      for (const s of list) this.published.set(s.device_feature_external_id, valueOf(s));
     } catch (err) {
+      // Gladys may have counted them anyway: the budget does too.
+      this.budget.record(list.length);
       this.logger.warn(`States not published: ${err.message}`);
-      return false;
+    }
+  }
+
+  /** Forget what was published for a device (Gladys forgot it too). */
+  forget(externalId) {
+    if (typeof externalId !== 'string') return;
+    const prefix = `${externalId}:`;
+    for (const id of [...this.published.keys()]) {
+      if (id === externalId || id.startsWith(prefix)) this.published.delete(id);
     }
   }
 
@@ -631,18 +697,20 @@ export class NetbirdApp {
 
   // --- Devices created / deleted in Gladys -----------------------------------
 
-  async deviceCreated() {
-    // The SDK forgot the values of this device: so do the texts.
-    this.publishedTexts.clear();
-    if (!this.online) {
-      await this.publishTransports();
-      return;
-    }
-    await this.publishPeerStates();
+  /** Created or updated: the SDK forgot the values of this device, so do we. */
+  async deviceCreated(device) {
+    this.forget(device?.external_id);
+    this.transports.delete(device?.external_id);
+    if (this.online) await this.publishPeerStates();
     await this.publishTransports();
   }
 
+  async deviceUpdated(device) {
+    await this.deviceCreated(device);
+  }
+
   deviceDeleted(device) {
+    this.forget(device?.external_id);
     this.transports.delete(device?.external_id);
   }
 

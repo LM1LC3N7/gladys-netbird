@@ -39,8 +39,9 @@ async function setup({
   netbird,
   dataDir,
   extraDevices = [],
+  now = T0,
 } = {}) {
-  const clock = { now: T0 };
+  const clock = { now };
   netbird ??= createFakeNetbird();
   const gladys = createFakeGladys({
     selector: SELECTOR,
@@ -246,20 +247,27 @@ test('a refused token (401) stops everything, even across a restart; saving trie
   assert.equal(gladys.fake.connectionStatus.connected, false);
   assert.match(gladys.fake.connectionStatus.message.en, /refused the access token/);
   assert.equal(timers.pending.size, 0, 'no retry timer');
-  assert.equal(netbird.requests.length, 1, 'stopped at /api/users/current');
-  // Gladys comes back: the status is sent again, nothing reaches NetBird.
+  assert.deepEqual(
+    netbird.requests.map((r) => r.path),
+    ['/api/users/current', '/api/peers'],
+    'the peers decide, not the user',
+  );
+  assert.ok(gladys.fake.transports.every((t) => t.transport === 'unreachable'));
+  // Gladys comes back: the status and the badges are sent again, nothing reaches NetBird.
   const statuses = gladys.fake.connectionStatuses.length;
+  const badges = gladys.fake.transports.length;
   await reconnect(gladys, app);
   assert.equal(gladys.fake.connectionStatuses.length, statuses + 1);
-  assert.equal(netbird.requests.length, 1);
+  assert.equal(gladys.fake.transports.length, badges + 4);
+  assert.equal(netbird.requests.length, 2);
   // The test button does not try again either.
   const ack = await gladys.fake.action(ACTIONS.TEST);
   assert.equal(ack.success, false);
   assert.match(ack.error, /refused the access token/);
-  assert.equal(netbird.requests.length, 1);
+  assert.equal(netbird.requests.length, 2);
   await running.stop();
   const second = await setup({ config: { token: 'nbp_wrong' }, dataDir, netbird });
-  assert.equal(netbird.requests.length, 1, 'the restart sent nothing');
+  assert.equal(netbird.requests.length, 2, 'the restart sent nothing');
   await second.gladys.fake.configUpdated({ ...BASE_CONFIG, token: TOKEN });
   assert.equal(second.gladys.fake.connectionStatus.connected, true);
   assert.ok(![...logs, ...second.logs].some((l) => l.includes('nbp_wrong') || l.includes(TOKEN)));
@@ -300,11 +308,60 @@ test('an older server without /api/users/current still works', async () => {
   assert.equal(gladys.fake.connectionStatus.connected, true);
 });
 
-test('a token that sees only its own peers is said in the status', async () => {
+test('a service user token works: the 403 of /api/users/current is no refusal', async () => {
+  const { gladys, netbird, app, timers } = await setup();
+  assert.equal(netbird.requests[0].path, '/api/users/current');
+  assert.equal(app.user, null);
+  assert.equal(gladys.fake.connectionStatus.connected, true);
+  assert.deepEqual(timers.delays(), [60_000]);
+  // The same for a regular user that may not read it, and for a 401 there.
+  for (const status of [403, 401]) {
+    await running.stop();
+    const other = createFakeNetbird();
+    other.user.is_service_user = false;
+    other.failures.push({ path: '/api/users/current', status });
+    const next = await setup({ netbird: other });
+    assert.equal(next.gladys.fake.connectionStatus.connected, true, String(status));
+  }
+});
+
+test('/api/users/current answering 429 pauses like any reading', async () => {
   const netbird = createFakeNetbird();
-  netbird.user.permissions.is_restricted = true;
+  netbird.failures.push({ path: '/api/users/current', status: 429 });
+  const { gladys, timers } = await setup({ netbird });
+  assert.match(gladys.fake.connectionStatus.message.en, /slow down/);
+  assert.deepEqual(timers.delays(), [INTERVALS.BUSY_MIN_MS]);
+});
+
+test('a User-role token lists only its own peers: said in the status, even with no peer', async () => {
+  const netbird = createFakeNetbird();
+  Object.assign(netbird.user, { is_service_user: false, role: 'user' });
+  netbird.user.permissions = { is_restricted: false, modules: { peers: { read: false } } };
   const { gladys } = await setup({ netbird });
-  assert.match(gladys.fake.connectionStatus.message.en, /sees only its own peers/);
+  assert.match(gladys.fake.connectionStatus.message.en, /lists only its own peers/);
+  assert.match(gladys.fake.connectionStatus.message.en, /Auditor/);
+  await running.stop();
+  const restricted = createFakeNetbird();
+  Object.assign(restricted.user, { is_service_user: false, role: 'user' });
+  restricted.user.permissions.is_restricted = true;
+  restricted.peers = [];
+  const second = await setup({ netbird: restricted });
+  assert.match(second.gladys.fake.connectionStatus.message.en, /sees no peer/);
+  assert.match(second.gladys.fake.connectionStatus.message.en, /lists only its own peers/);
+  await running.stop();
+  // A service user (user unknown) with an empty list: the Auditor advice.
+  const empty = createFakeNetbird();
+  empty.peers = [];
+  const third = await setup({ netbird: empty });
+  assert.match(third.gladys.fake.connectionStatus.message.en, /Auditor role/);
+  assert.match(third.gladys.fake.connectionStatus.message.fr, /0 pair connecté|aucun pair/);
+});
+
+test('French: 0 and 1 take the singular', async () => {
+  const netbird = createFakeNetbird();
+  for (const p of netbird.peers) p.connected = false;
+  const { gladys } = await setup({ netbird });
+  assert.match(gladys.fake.connectionStatus.message.fr, /0 pair connecté sur 3/);
 });
 
 test('HTTP 429: a bounded pause kept in /data across a restart, Gladys and a saved configuration', async () => {
@@ -365,6 +422,24 @@ test('a pause end written far in the future is capped when read back', async () 
   writeFileSync(file, JSON.stringify(stored));
   const second = await setup({ dataDir });
   assert.deepEqual(second.timers.delays(), [INTERVALS.BUSY_MAX_MS]);
+  const rewritten = Number(JSON.parse(readFileSync(file, 'utf8')).meta[key]);
+  assert.equal(rewritten, T0 + INTERVALS.BUSY_MAX_MS, 'the capped end is written back');
+  // A second reading of the file, an hour later: the end does not move.
+  await running.stop();
+  const third = await setup({ dataDir, now: T0 + 3600_000 });
+  assert.deepEqual(third.timers.delays(), [INTERVALS.BUSY_MAX_MS - 3600_000]);
+  assert.equal(third.netbird.requests.length, 0);
+});
+
+test('a pause that ended is removed from /data after a reading that works', async () => {
+  const dataDir = mkdtempSync(join(tmpdir(), 'nb-app-'));
+  const { gladys, netbird, timers } = await setup({ dataDir });
+  netbird.failures.push({ path: '/api/peers', status: 429 });
+  await poll(timers);
+  assert.match(readFileSync(join(dataDir, 'netbird.json'), 'utf8'), /pausedUntil/);
+  await timers.run();
+  assert.equal(gladys.fake.connectionStatus.connected, true);
+  assert.doesNotMatch(readFileSync(join(dataDir, 'netbird.json'), 'utf8'), /pausedUntil/);
 });
 
 test('HTTP 5xx: a pause kept in /data, then doubling', async () => {
@@ -472,15 +547,78 @@ test('a self-hosted server: its address, /api added once', async () => {
   assert.equal(netbird.requests[0].url, 'https://netbird.example.org:8443/api/users/current');
 });
 
-test('texts are budgeted; connected and the counts always go', async () => {
-  const { gladys, netbird, timers, app } = await setup();
-  app.budget.record(LIMITS.STATES_PER_MINUTE);
+test('every state is budgeted: the counts first, then connected, then the texts', async () => {
+  const { gladys, netbird, timers, app, clock } = await setup();
+  app.budget.record(app.budget.remaining() - 2);
   peer(netbird, NAS).version = '0.60.0';
   peer(netbird, NAS).connected = false;
   await poll(timers);
+  assert.equal(gladys.fake.lastState(`ext:${SELECTOR}:network:main:connected_count`), 1);
+  assert.equal(last(gladys, NAS, 'connected'), 0);
   assert.equal(last(gladys, NAS, 'version'), '0.59.1', 'held back');
-  assert.equal(last(gladys, NAS, 'connected'), 0, 'always sent');
-  timers.pending.clear();
+  clock.now += 61_000;
+  await poll(timers);
+  assert.equal(last(gladys, NAS, 'version'), '0.60.0', 'sent once the window slid');
+});
+
+test('200 created peers: never more than 250 states in a minute, the texts in turn', async () => {
+  const netbird = createFakeNetbird();
+  const ids200 = Array.from({ length: 200 }, (_, i) => `p${String(i).padStart(4, '0')}`);
+  netbird.peers = ids200.map((id, i) =>
+    netbirdPeer(id, `Peer ${i}`, { ip: `100.92.${Math.floor(i / 250)}.${(i % 250) + 1}` }),
+  );
+  const { gladys, timers, clock } = await setup({ netbird, created: ids200 });
+  const sent = [];
+  const count = () => gladys.fake.states.length;
+  sent.push([clock.now, count()]);
+  assert.ok(count() <= LIMITS.STATES_PER_MINUTE, `${count()} states at start`);
+  for (let round = 0; round < 8; round += 1) {
+    // Readings every 20 s: the window holds three of them.
+    clock.now += 20_000;
+    await poll(timers);
+    sent.push([clock.now, count()]);
+  }
+  for (const [at, total] of sent) {
+    const before = sent.filter(([t]) => t <= at - 60_000).at(-1)?.[1] ?? 0;
+    assert.ok(total - before <= LIMITS.STATES_PER_MINUTE, `${total - before} states in a minute`);
+  }
+  // Everything arrives in the end: every text of every peer.
+  for (let round = 0; round < 10; round += 1) {
+    clock.now += 61_000;
+    await poll(timers);
+  }
+  for (const id of ids200) {
+    assert.ok(last(gladys, id, 'ip'), id);
+    assert.ok(last(gladys, id, 'last_seen'), id);
+  }
+});
+
+test('one reading at a time: Discovery during a reading sends no second request', async () => {
+  const { gladys, netbird, timers } = await setup();
+  let release;
+  netbird.peersGate = new Promise((resolve) => (release = resolve));
+  const looping = poll(timers);
+  for (let i = 0; i < 5; i += 1) await new Promise((resolve) => setImmediate(resolve));
+  const scan = gladys.fake.scanRequest();
+  for (let i = 0; i < 5; i += 1) await new Promise((resolve) => setImmediate(resolve));
+  netbird.peersGate = null;
+  release();
+  await looping;
+  await scan;
+  assert.equal(netbird.requests.filter((r) => r.path === '/api/peers').length, 2, 'start + one');
+  assert.deepEqual(timers.delays(), [60_000]);
+});
+
+test('a device updated in Gladys gets its values again', async () => {
+  const { gladys, app } = await setup();
+  const before = gladys.fake.states.length;
+  await gladys.fake.deviceUpdated(peerDevice(NAS));
+  const resent = gladys.fake.states.slice(before).map((s) => s.device_feature_external_id);
+  assert.ok(resent.length > 0 && resent.every((id) => id.includes(`:${NAS}:`)), 'only NAS');
+  assert.ok(
+    [...app.published.keys()].some((id) => id.includes(LAPTOP)),
+    'the others kept',
+  );
 });
 
 test('a device created later gets its states and badge at once', async () => {
