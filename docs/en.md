@@ -120,38 +120,47 @@ On the dashboard, edit, add a box, pick **NetBird peers** (it needs Gladys
 5.1.0 or later). It shows, from the last reading of the integration (it
 sends no request of its own):
 
-- **tiles**: peers connected, disconnected, in total, and login expired when
-  one is;
-- **a list** (8 rows at most), one row per peer: its name, its NetBird IP
-  and DNS name, a badge _online_ / _offline_ / _login expired_, and for a
-  disconnected peer the date of its last connection. Tap a row for the
-  details: system, NetBird version, groups, login expiry. The connected
-  peers come first, by name, then the disconnected ones, the most recently
-  seen first;
-- **a status**: whether NetBird answers, the time of the last reading, the
-  watched peers that are offline;
+- **tiles**: peers connected, disconnected, in total, and, when there are
+  some, peers whose state NetBird does not give (**Unknown**, never red) and
+  peers whose login expired;
+- **a list** (8 rows at most), one row per peer: its name, a badge
+  _online_ / _offline_ / _login expired_ / _unknown_, and its NetBird IP and
+  DNS name, or, for a disconnected peer, the date of its last connection
+  (shown by the dashboard in your time zone). Tap a row for the details: IP
+  and DNS name, last connection, system, NetBird version, groups, login
+  expiry. The connected peers come first, by name, then the disconnected
+  ones, the most recently seen first, then the unknown ones;
+- **a status**: whether NetBird answers, the time of the last reading (in
+  UTC), the watched peers that are offline or not found;
 - **"+N more"** when the list does not hold every peer.
 
 Settings of the box:
 
-- **Peers listed**: all (default), connected, or disconnected. The counts
-  always cover every peer of the groups of the box.
+- **Peers listed**: all (default), connected, or disconnected (a peer
+  without a state is listed only under "all"). The counts always cover
+  every peer of the groups of the box.
 - **Groups** (optional): names or ids of NetBird groups, separated by
-  commas, within the peers the integration follows.
+  commas, within the peers the integration follows. 100 characters at most
+  (a limit of Gladys for widget settings).
 - **Peers to watch** (optional): peers that should stay connected (a
   server, a NAS). When one is disconnected, the "Disconnected" tile and its
-  badge turn red and the status names it. Only peers created as devices
-  can be picked.
+  badge turn red and the status names it ("Watched, offline"). A watched
+  peer missing from the reading (deleted in NetBird, registered again under
+  a new id, out of the group filter of the integration) is named in red
+  too ("Watched, not found"). Only peers created as devices can be picked.
+  **If you delete the Gladys device of a watched peer, the box shows an
+  error** (Gladys refuses a setting that names a device that no longer
+  exists): edit the box and save it again without that peer.
 - **Rows shown**: 3, 5 or 8.
 - **Page**: 1 by default. More than 8 peers? Add a second box on page 2.
 
-Example (text capture, English dashboard):
+Example (text capture, English dashboard, times in Paris):
 
 ```
 [ Connected 2 ]  [ Disconnected 1 ]  [ Total 3 ]
 NAS      100.92.10.1 · nas.netbird.cloud        (online)
 Phone    100.92.10.3 · phone.netbird.cloud      (online)
-Laptop   100.92.10.2 · laptop.netbird.cloud     (offline)  2026-10-16 21:30
+Laptop   10/16/2026 11:30 PM                    (offline)
   ● NetBird: answers
   ● Last reading: 2026-10-17 08:00 UTC
 ```
@@ -164,13 +173,28 @@ With **Peers to watch** = NAS, while it is disconnected:
   ● Watched, offline: NAS (red)
 ```
 
-When NetBird fails after a reading, the widget keeps the last peers read
-(NetBird IPs rarely change), with its tiles and status in red ("no answer")
-or orange during a pause asked by NetBird (HTTP 429). With a refused token, a
-configuration to fix, or nothing read yet, it shows a short text instead of
-the peers. It is pulled again at the refresh interval, and at once when a
-peer connects, disconnects, expires, is added or removed, or when NetBird
-fails or answers again (one nudge per 10 seconds at most). It never shows
+NetBird answers but no peer is in the view (groups of the box or of the
+integration):
+
+```
+[ Connected 0 ]  [ Disconnected 0 ]  [ Total 0 ]
+NetBird answers, but no peer is in this view (groups of the widget or of the integration).
+  ● NetBird: answers
+  ● Last reading: 2026-10-17 08:00 UTC
+```
+
+Once something was read, the widget keeps showing the last reading (NetBird
+IPs rarely change), and its colors say how fresh it is: tiles and status in
+red when NetBird does not answer ("no answer"), in orange during a pause
+asked by NetBird (HTTP 429 or a 5xx server error), in blue while the first
+reading after a restart is pending; the badges of the rows turn grey then
+(they are what was last read). With a refused token or a configuration to
+fix, or before anything was ever read with this server, groups and token, it
+shows a short text instead of the peers: a new token (another account) never
+shows the peers of the previous one. It is pulled again at the refresh
+interval, and at once when a peer connects, disconnects, expires, logs in
+again, is added, renamed or removed, or when NetBird fails or answers again
+(one nudge per 10 seconds at most). It never shows
 the token, the address of the server, the public IP or the location of a
 peer.
 

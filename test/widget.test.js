@@ -6,7 +6,7 @@
 
 import { afterEach, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { validateWidgetContent } from '@gladysassistant/integration-sdk';
@@ -16,7 +16,7 @@ import { WIDGETS } from '../src/constants.js';
 import { buildNetworkDevice, buildPeerDevice } from '../src/devices.js';
 import { registerHandlers } from '../src/handlers.js';
 import { parsePeers } from '../src/netbird/parse.js';
-import { WIDGET_LIMITS, peersWidget, sortPeers } from '../src/widget.js';
+import { WIDGET_LIMITS, cut, instantOf, peersWidget, sortPeers } from '../src/widget.js';
 import { TOKEN, createFakeNetbird, netbirdPeer } from './helpers/fakeNetbird.js';
 import { createFakeTimers } from './helpers/fakeTimers.js';
 
@@ -115,7 +115,9 @@ test('filter "all": connected first by name, then disconnected, most recent firs
   assert.equal(desktop.date, undefined, 'no date for a connected peer');
   assert.deepEqual(phone.badge, { text: 'offline', color: 'neutral' });
   assert.equal(phone.date, '2026-10-17T06:00:00.000Z');
-  assert.match(phone.description, /^Last seen: 2026-10-17 06:00 UTC$/m);
+  // The last connection is the date of the row (time zone of the user), not
+  // repeated in the details as UTC.
+  assert.doesNotMatch(phone.description, /Last seen/);
   assert.match(phone.description, /^System: Debian GNU\/Linux 12$/m);
   assert.match(phone.description, /^NetBird version: 0\.59\.1$/m);
   assert.match(phone.description, /^Groups: All$/m);
@@ -181,9 +183,46 @@ test('French texts', () => {
   const items = list(content).items;
   assert.equal(items[0].badge.text, 'en ligne');
   assert.equal(items[2].badge.text, 'hors ligne');
-  assert.equal(items[4].badge.text, 'session expirée');
-  assert.match(items[2].description, /^Dernière connexion : 2026-10-17 06:00 UTC$/m);
+  assert.equal(items[4].badge.text, 'conn. expirée');
+  assert.match(items[4].description, /^Connexion expirée : reconnectez ce client/m);
+  assert.match(items[2].description, /^Système : Debian GNU\/Linux 12$/m);
   assert.equal(of(content, 'status')[0].items[0].value, 'répond');
+});
+
+test('French vocabulary: "clients" and "connexion expirée", never "pair" nor "session"', async () => {
+  const { T } = await import('../src/i18n.js');
+  const texts = [];
+  const walk = (node) => {
+    if (typeof node === 'function') {
+      walk(node(2, 3));
+      walk(node(1, 1));
+    } else if (node && typeof node === 'object') {
+      if (typeof node.fr === 'string') texts.push(node.fr);
+      for (const value of Object.values(node)) if (typeof value !== 'string') walk(value);
+    }
+  };
+  walk(T.widget);
+  assert.ok(texts.length > 30);
+  assert.doesNotMatch(texts.join('\n'), /\bpairs?\b|session/i);
+  const manifest = JSON.parse(
+    readFileSync(new URL('../gladys-assistant-integration.json', import.meta.url), 'utf8'),
+  );
+  assert.doesNotMatch(JSON.stringify(manifest.widgets), /\bpairs?\b|session/i);
+});
+
+test('cut never splits a UTF-16 pair; dates at midnight UTC stay instants', () => {
+  assert.equal(cut(`${'a'.repeat(38)}😀zz`, 40), `${'a'.repeat(38)}…`);
+  assert.equal(cut(`${'a'.repeat(37)}😀zz`, 40), `${'a'.repeat(37)}😀…`);
+  assert.doesNotMatch(cut(`${'a'.repeat(38)}😀zz`, 40), /[\ud800-\udbff](?![\udc00-\udfff])/);
+  assert.equal(cut('short', 40), 'short');
+  const midnight = Date.parse('2026-10-16T00:00:00Z');
+  assert.equal(instantOf(midnight), '2026-10-16T00:00:00.001Z');
+  assert.equal(instantOf(midnight + 60_000), '2026-10-16T00:01:00.000Z');
+  const content = build({
+    peers: peers([['a', 'Box', { connected: false, last_seen: '2026-10-16T00:00:00Z' }]]),
+  });
+  assert.doesNotMatch(list(content).items[0].date, /^(\d{4}-\d{2}-\d{2})(T00:00:00(\.000)?Z)?$/);
+  assertWithinSdk(content);
 });
 
 test('sort: names without case, unknown last seen at the end, ties by name', () => {
@@ -249,7 +288,8 @@ test('groups and watched peers: the counts follow the groups, a watched peer off
   assert.equal(tiles(servers).Total[0], 1);
   const nobody = build({ settings: { groups: 'nothing' } });
   assertWithinSdk(nobody);
-  assert.equal(of(nobody, 'text')[0].text, 'No peer in these groups.');
+  assert.match(of(nobody, 'text')[0].text, /no peer is in this view/);
+  assert.deepEqual(tiles(nobody).Total, [0, 'primary']);
 
   const watched = build({ settings: { watch: [deviceOf('p2'), deviceOf('p0'), 'bogus'] } });
   assertWithinSdk(watched);
@@ -264,8 +304,15 @@ test('groups and watched peers: the counts follow the groups, a watched peer off
 });
 
 test('errors: an empty state with a text, or the last peers with a red status', () => {
-  for (const state of ['refused', 'config', 'waiting', 'error']) {
-    const content = build({ state, peers: ['error', 'waiting'].includes(state) ? [] : SAMPLE });
+  // Nothing ever read (readAt null), or a state that never shows peers.
+  for (const [state, readAt] of [
+    ['refused', T0],
+    ['config', T0],
+    ['waiting', null],
+    ['error', null],
+    ['paused', null],
+  ]) {
+    const content = build({ state, readAt, peers: readAt === null ? [] : SAMPLE });
     assertWithinSdk(content);
     assert.equal(list(content), undefined, `${state}: no peer shown`);
     assert.equal(of(content, 'value').length, 0, `${state}: no count`);
@@ -284,8 +331,107 @@ test('errors: an empty state with a text, or the last peers with a red status', 
       ['2026-10-17 08:00 UTC', 'danger'],
     ],
   );
+  // During an outage, the badges tell what was last read: neutral.
+  assert.ok(list(stale).items.every((i) => i.badge.color === 'neutral'));
   const paused = build({ state: 'paused' });
   assert.ok(of(paused, 'value').every((t) => t.color === 'warning'));
+  assert.ok(list(paused).items.every((i) => i.badge.color === 'neutral'));
+});
+
+test('S13: NetBird answers with no peer: 0 / 0 / 0, a text, the last reading', () => {
+  for (const settings of [{}, { filter: 'disconnected' }, { groups: 'servers' }]) {
+    const content = build({ peers: [], settings });
+    assertWithinSdk(content);
+    assert.deepEqual(tiles(content), {
+      Connected: [0, 'neutral'],
+      Disconnected: [0, 'neutral'],
+      Total: [0, 'primary'],
+    });
+    assert.match(of(content, 'text')[0].text, /^NetBird answers, but no peer is in this view/);
+    assert.doesNotMatch(JSON.stringify(content), /does not answer/);
+    assert.deepEqual(
+      of(content, 'status')[0].items.map((i) => [i.label, i.value]),
+      [
+        ['NetBird', 'answers'],
+        ['Last reading', '2026-10-17 08:00 UTC'],
+      ],
+    );
+  }
+  // An outage after a reading with no peer: the zeros stay, in red.
+  const outage = build({ state: 'error', peers: [] });
+  assertWithinSdk(outage);
+  assert.deepEqual(tiles(outage).Total, [0, 'danger']);
+});
+
+test('S2: waiting with known peers (Gladys reconnected): info, consistently', () => {
+  const content = build({ state: 'waiting' });
+  assertWithinSdk(content);
+  assert.ok(of(content, 'value').every((t) => t.color === 'info'));
+  assert.deepEqual(
+    of(content, 'status')[0].items.map((i) => i.color),
+    ['info', 'info'],
+  );
+  assert.ok(list(content).items.every((i) => i.badge.color === 'neutral'));
+});
+
+test('S3: a peer without a state is "unknown", counted apart, never red', () => {
+  const sample = peers([
+    ['a', 'NAS', {}],
+    ['b', 'Box', {}],
+    ['c', 'Laptop', { connected: false, last_seen: '2026-10-16T21:30:00Z' }],
+  ]);
+  sample[1].connected = null;
+  const content = build({ peers: sample, settings: { watch: [deviceOf('b')] } });
+  assertWithinSdk(content);
+  assert.deepEqual(tiles(content), {
+    Connected: [1, 'success'],
+    Disconnected: [1, 'neutral'],
+    Total: [3, 'primary'],
+    Unknown: [1, 'neutral'],
+  });
+  assert.equal(of(content, 'status')[0].items.length, 2, 'not "Watched, offline"');
+  assert.deepEqual(
+    list(content).items.map((i) => [i.title, i.badge.text, i.badge.color]),
+    [
+      ['NAS', 'online', 'success'],
+      ['Laptop', 'offline', 'neutral'],
+      ['Box', 'unknown', 'neutral'],
+    ],
+  );
+  const disconnected = build({ peers: sample, settings: { filter: 'disconnected' } });
+  assert.deepEqual(
+    list(disconnected).items.map((i) => i.title),
+    ['Laptop'],
+  );
+  const fr = build({ peers: sample, language: 'fr' });
+  assert.deepEqual(tiles(fr).Inconnus, [1, 'neutral']);
+});
+
+test('S4: a watched peer missing from the reading is "not found", in red', () => {
+  // The created devices of the integration, as the connected SDK holds them.
+  const fake = Object.defineProperty(Object.create(gladys), 'devices', {
+    value: [buildPeerDevice(gladys, { id: 'gone0000000000000000', name: 'Old NAS' })],
+  });
+  const content = build({
+    gladys: fake,
+    settings: { watch: [deviceOf('gone0000000000000000'), deviceOf('nodevice00000000000')] },
+  });
+  assertWithinSdk(content);
+  assert.deepEqual(of(content, 'status')[0].items.slice(2), [
+    { label: 'Watched, not found', value: 'Old NAS', icon: 'alert-triangle', color: 'danger' },
+    {
+      label: 'Watched, not found',
+      value: 'nodevice00000000000',
+      icon: 'alert-triangle',
+      color: 'danger',
+    },
+  ]);
+  const fr = build({
+    gladys: fake,
+    language: 'fr',
+    settings: { watch: [deviceOf('gone0000000000000000')] },
+  });
+  assert.equal(of(fr, 'status')[0].items.at(-1).label, 'Surveillé, introuvable');
 });
 
 test('long names and odd values stay within the limits', () => {
@@ -447,6 +593,45 @@ test('app: never two nudges within 10 s; the change held back goes at the next c
   clock.now += 60_000;
   await timers.run((d) => d === 60_000);
   assert.equal(fake.fake.widgetRefreshes.length, 2, 'sent at the next reading');
+});
+
+test('app S13: NetBird answers with no followed peer: zeros, never "does not answer"', async () => {
+  const { gladys: fake } = await setup({ config: { groups: 'no-such-group' } });
+  assert.equal(fake.fake.connectionStatus.connected, true);
+  const content = await widget(fake, { settings: {} });
+  assertWithinSdk(content);
+  assert.deepEqual(
+    of(content, 'value').map((t) => t.value),
+    [0, 0, 0],
+  );
+  assert.match(content.components.find((c) => c.type === 'text').text, /NetBird answers/);
+  assert.deepEqual(
+    of(content, 'status')[0].items.map((i) => i.value),
+    ['answers', '2026-10-17 08:00 UTC'],
+  );
+});
+
+test('app S9: a token of another account never shows the peers of the previous one', async () => {
+  const { gladys: fake, netbird, app } = await setup();
+  assert.equal(list(await widget(fake, { settings: {} })).items.length, 3);
+  const before = app.knownKey(app.config);
+  assert.ok(!before.includes(TOKEN), 'a fingerprint, never the token');
+  netbird.unreachable = true;
+  await fake.fake.configUpdated({ token: 'nbp_OtherAccountToken0123456789abcdef' });
+  const content = await widget(fake, { settings: {} });
+  assertWithinSdk(content);
+  assert.equal(list(content), undefined, 'no peer of the other account');
+  assert.equal(of(content, 'status')[0].items[0].value, 'no answer');
+  assert.notEqual(app.knownKey(app.config), before);
+});
+
+test('app: a new last login (login expiry) nudges the widget', async () => {
+  const { gladys: fake, netbird, timers, clock } = await setup();
+  assert.equal(fake.fake.widgetRefreshes.length, 1);
+  netbird.peers.find((p) => p.name === 'Laptop').last_login = '2026-10-17T07:00:00Z';
+  clock.now += 60_000;
+  await timers.run((d) => d === 60_000);
+  assert.equal(fake.fake.widgetRefreshes.length, 2);
 });
 
 test('app: a failure in the widget code gives a text, not an exception', async () => {

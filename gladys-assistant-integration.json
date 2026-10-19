@@ -150,8 +150,8 @@
           "type": "string",
           "label": { "en": "Groups (optional)", "fr": "Groupes (facultatif)" },
           "description": {
-            "en": "Names or ids of NetBird groups, separated by commas: only their peers are shown and counted. Empty: every peer the integration follows.",
-            "fr": "Noms ou identifiants de groupes NetBird, séparés par des virgules : seuls leurs clients sont affichés et comptés. Vide : tous les clients que suit l'intégration."
+            "en": "Names or ids of NetBird groups, separated by commas (100 characters at most): only their peers are shown and counted. Empty: every peer the integration follows.",
+            "fr": "Noms ou identifiants de groupes NetBird, séparés par des virgules (100 caractères au plus) : seuls leurs clients sont affichés et comptés. Vide : tous les clients que suit l'intégration."
           },
           "placeholder": { "en": "e.g. servers", "fr": "ex. serveurs" },
           "required": false
@@ -162,8 +162,8 @@
           "source": "devices",
           "label": { "en": "Peers to watch (optional)", "fr": "Clients à surveiller (facultatif)" },
           "description": {
-            "en": "Peers that should stay connected (a server, a NAS): when one is disconnected, the widget turns red and names it. Only peers added as devices can be picked.",
-            "fr": "Clients qui doivent rester connectés (un serveur, un NAS) : quand l'un est déconnecté, le widget passe au rouge et le nomme. Seuls les clients ajoutés comme appareils peuvent être choisis."
+            "en": "Peers that should stay connected (a server, a NAS): when one is disconnected or not found, the widget turns red and names it. Only peers added as devices can be picked. If you delete the device of a watched peer, edit this box and save it again.",
+            "fr": "Clients qui doivent rester connectés (un serveur, un NAS) : quand l'un est déconnecté ou introuvable, le widget passe au rouge et le nomme. Seuls les clients ajoutés comme appareils peuvent être choisis. Si vous supprimez l'appareil d'un client surveillé, modifiez cette boîte et enregistrez-la de nouveau."
           },
           "required": false
         },

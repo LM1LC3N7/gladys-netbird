@@ -274,3 +274,37 @@ up to date at the end of every milestone.
     the server address. Nothing new in the logs.
   - **Not done**: "update available" (no API field, see milestone 3);
     widget counts cover the 500 followed peers only.
+  - **Review corrections** (2026-10-20, review `high` of 42d6047; they
+    override the points above where they differ):
+    - empty state only for `refused` and `config`, and for `waiting`,
+      `error`, `paused` while nothing was ever read (`known` null); a
+      reading with 0 peer shows 0 / 0 / 0, the text "NetBird answers, but
+      no peer is in this view" and the last reading (was "NetBird does not
+      answer", blocking);
+    - colors: `waiting` with a reading (Gladys reconnected) is `info`
+      everywhere; `paused` (429 and 5xx) `warning`; `error` `danger`; the
+      row badges turn `neutral` in every state but `ok` (what was last
+      read, not a state of now);
+    - `connected` null is "unknown": its own tile (only when > 0, never
+      red), listed only under "all", after the disconnected peers; a
+      watched peer is "offline" only when `connected` is false;
+    - a watched peer missing from the reading is named in the status,
+      `danger`, "Watched, not found" (the name of its Gladys device, its
+      NetBird id otherwise);
+    - `knownKey` holds a SHA-256 of the token (in memory only, never the
+      token): a token of another account never shows the previous peers;
+    - the nudge key holds `lastLogin` and `loginExpirationEnabled` (login
+      expiry of the details);
+    - times: the row `date` is formatted by the dashboard in the time zone
+      of the user (not repeated in the details); every time the module
+      writes says UTC (status, login expiry). An exact midnight UTC gets
+      +1 ms (the dashboard would read it as a calendar day);
+    - `cut()` never splits a UTF-16 pair;
+    - French: "clients" and "connexion expirée" everywhere in the widget;
+      the badge is "conn. expirée" (badges hold 16 characters);
+    - docs: deleting the Gladys device of a watched peer makes the core
+      refuse the box settings (422): edit the box; orange for 429 and 5xx;
+      the Groups setting holds 100 characters (core limit).
+  - The dashboard shows the `date` of a row instead of its subtitle
+    (front `WidgetComponents.jsx`): a disconnected peer shows its last
+    connection in the row, its IP in the detail panel.

@@ -52,8 +52,9 @@ Gladys ⇄ SDK ⇄ src/app.js (NetbirdApp)
   compared with the previous reading only (none at start, none after a
   failure, none for a new peer).
 - **Widget** `peers` (Gladys >= 5.1.0): tiles (connected, disconnected,
-  total, login expired), a card-list of 8 rows at most (connected by name,
-  then disconnected by last seen), a status and "+N more"; settings filter,
+  total, unknown, login expired), a card-list of 8 rows at most (connected
+  by name, then disconnected by last seen, then unknown), a status
+  (watched peers offline or not found) and "+N more"; settings filter,
   groups, peers to watch, rows, page. Built from the last reading (no
   request of its own, so no pause is skipped), `ttl_seconds` = poll
   interval, `requestWidgetRefresh` when what it shows changes (at most one

@@ -19,7 +19,7 @@
 // again.
 // -----------------------------------------------------------------------------
 
-import { createHmac } from 'node:crypto';
+import { createHash, createHmac } from 'node:crypto';
 import { join } from 'node:path';
 import { createLogger } from '@gladysassistant/integration-sdk';
 import { Budget } from './budget.js';
@@ -168,11 +168,19 @@ export class NetbirdApp {
       .digest('hex');
   }
 
-  /** What the known peers belong to (never the token). */
+  /**
+   * What the known peers belong to: the server, the filter and a SHA-256
+   * fingerprint of the token (never the token itself; in memory only), so
+   * that a token of another account never shows the peers of the previous
+   * one.
+   */
   knownKey(config) {
     return JSON.stringify([
       config.server?.base,
       config.filter ? [...config.filter.names].sort() : null,
+      createHash('sha256')
+        .update(config.token ?? '')
+        .digest('hex'),
     ]);
   }
 
@@ -790,6 +798,9 @@ export class NetbirdApp {
         p.os,
         p.version,
         p.groups.map((g) => g.name),
+        // The login expiry shown in the details.
+        p.lastLogin,
+        p.loginExpirationEnabled,
       ]),
     ]);
     if (key === this.widgetKey) return;

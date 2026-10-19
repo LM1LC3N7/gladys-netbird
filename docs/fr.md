@@ -132,39 +132,51 @@ Sur le tableau de bord, modifiez, ajoutez une boîte, choisissez **Clients
 NetBird** (Gladys 5.1.0 ou plus récent). Il montre, d'après la dernière
 lecture de l'intégration (il n'envoie aucune requête à lui seul) :
 
-- **des tuiles** : clients connectés, déconnectés, au total, et connexion
-  expirée quand il y en a ;
-- **une liste** (8 lignes au plus), une ligne par client : son nom, son IP
-  NetBird et son nom DNS, un badge _en ligne_ / _hors ligne_ / _session
-  expirée_, et pour un client déconnecté la date de sa dernière connexion.
-  Touchez une ligne pour le détail : système, version NetBird, groupes,
-  expiration de la connexion. Les clients connectés d'abord, par nom, puis
-  les déconnectés, le plus récemment vu d'abord ;
-- **un état** : si NetBird répond, l'heure de la dernière lecture, les
-  clients surveillés hors ligne ;
+- **des tuiles** : clients connectés, déconnectés, au total, et, quand il y
+  en a, les clients dont NetBird ne donne pas l'état (**Inconnus**, jamais
+  en rouge) et ceux dont la connexion a expiré ;
+- **une liste** (8 lignes au plus), une ligne par client : son nom, un
+  badge _en ligne_ / _hors ligne_ / _conn. expirée_ / _inconnu_, et son IP
+  NetBird et son nom DNS, ou, pour un client déconnecté, la date de sa
+  dernière connexion (affichée par le tableau de bord dans votre fuseau
+  horaire). Touchez une ligne pour le détail : IP et nom DNS, dernière
+  connexion, système, version NetBird, groupes, expiration de la connexion.
+  Les clients connectés d'abord, par nom, puis les déconnectés, le plus
+  récemment vu d'abord, puis les inconnus ;
+- **un état** : si NetBird répond, l'heure de la dernière lecture (en UTC),
+  les clients surveillés hors ligne ou introuvables ;
 - **« +N autres »** quand la liste ne tient pas tous les clients.
 
 Réglages de la boîte :
 
-- **Clients listés** : tous (par défaut), connectés ou déconnectés. Les
-  compteurs couvrent toujours tous les clients des groupes de la boîte.
+- **Clients listés** : tous (par défaut), connectés ou déconnectés (un
+  client sans état n'est listé que sous « tous »). Les compteurs couvrent
+  toujours tous les clients des groupes de la boîte.
 - **Groupes** (facultatif) : noms ou identifiants de groupes NetBird,
   séparés par des virgules, parmi les clients que suit l'intégration.
+  100 caractères au plus (une limite de Gladys pour les réglages de widget).
 - **Clients à surveiller** (facultatif) : des clients qui doivent rester
   connectés (un serveur, un NAS). Quand l'un est déconnecté, la tuile
-  « Déconnectés » et son badge passent au rouge et l'état le nomme. Seuls
-  les clients créés comme appareils peuvent être choisis.
+  « Déconnectés » et son badge passent au rouge et l'état le nomme
+  (« Surveillé, hors ligne »). Un client surveillé absent de la lecture
+  (supprimé dans NetBird, réenregistré sous un nouvel identifiant, hors du
+  filtre de groupes de l'intégration) est nommé en rouge aussi
+  (« Surveillé, introuvable »). Seuls les clients créés comme appareils
+  peuvent être choisis. **Si vous supprimez l'appareil Gladys d'un client
+  surveillé, la boîte affiche une erreur** (Gladys refuse un réglage qui
+  nomme un appareil disparu) : modifiez la boîte et enregistrez-la de
+  nouveau sans ce client.
 - **Lignes affichées** : 3, 5 ou 8.
 - **Page** : 1 par défaut. Plus de 8 clients ? Ajoutez une seconde boîte en
   page 2.
 
-Exemple (capture texte, tableau de bord en français) :
+Exemple (capture texte, tableau de bord en français, heures de Paris) :
 
 ```
 [ Connectés 2 ]  [ Déconnectés 1 ]  [ Total 3 ]
 NAS      100.92.10.1 · nas.netbird.cloud        (en ligne)
 Phone    100.92.10.3 · phone.netbird.cloud      (en ligne)
-Laptop   100.92.10.2 · laptop.netbird.cloud     (hors ligne)  2026-10-16 21:30
+Laptop   16/10/2026 23:30                       (hors ligne)
   ● NetBird : répond
   ● Dernière lecture : 2026-10-17 08:00 UTC
 ```
@@ -177,16 +189,30 @@ Avec **Clients à surveiller** = NAS, pendant qu'il est déconnecté :
   ● Surveillé, hors ligne : NAS (rouge)
 ```
 
-Quand NetBird tombe après une lecture, le widget garde les derniers clients
-lus (les IP NetBird changent rarement), tuiles et état en rouge (« sans
-réponse ») ou en orange pendant une pause demandée par NetBird (HTTP 429).
-Avec un jeton refusé, une configuration à corriger, ou rien encore lu, il
-affiche un court texte à la place des clients. Il est relu à l'intervalle de
-rafraîchissement, et tout de suite quand un client se connecte, se
-déconnecte, expire, est ajouté ou retiré, ou quand NetBird tombe ou répond
-de nouveau (une relance toutes les 10 secondes au plus). Il n'affiche
-jamais le jeton, l'adresse du serveur, l'IP publique ni la localisation
-d'un client.
+NetBird répond mais aucun client n'est dans la vue (groupes de la boîte ou
+de l'intégration) :
+
+```
+[ Connectés 0 ]  [ Déconnectés 0 ]  [ Total 0 ]
+NetBird répond, mais aucun client n'est dans cette vue (groupes du widget ou de l'intégration).
+  ● NetBird : répond
+  ● Dernière lecture : 2026-10-17 08:00 UTC
+```
+
+Une fois quelque chose lu, le widget continue de montrer la dernière lecture
+(les IP NetBird changent rarement), et ses couleurs disent sa fraîcheur :
+tuiles et état en rouge quand NetBird ne répond pas (« sans réponse »), en
+orange pendant une pause demandée par NetBird (HTTP 429 ou erreur serveur
+5xx), en bleu pendant la première lecture après un redémarrage ; les badges
+des lignes passent alors en gris (ils disent ce qui a été lu). Avec un jeton
+refusé ou une configuration à corriger, ou avant toute lecture avec ce
+serveur, ces groupes et ce jeton, il affiche un court texte à la place des
+clients : un nouveau jeton (un autre compte) ne montre jamais les clients du
+précédent. Il est relu à l'intervalle de rafraîchissement, et tout de suite
+quand un client se connecte, se déconnecte, expire, se reconnecte, est
+ajouté, renommé ou retiré, ou quand NetBird tombe ou répond de nouveau (une
+relance toutes les 10 secondes au plus). Il n'affiche jamais le jeton,
+l'adresse du serveur, l'IP publique ni la localisation d'un client.
 
 ## Problèmes de connexion
 

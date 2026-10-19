@@ -199,6 +199,32 @@ test('the widget: limits of the store, settings tied to the code, nothing secret
   assert.equal(settings.watch.default, undefined, 'no default with a source');
   assert.ok(settings.page.min === 1 && settings.page.max >= 1);
   assert.match(manifest.gladys_version, /^>=5\.1\.0$/, 'widgets need 5.1.0 (store)');
+  // The core refuses a widget setting string over 100 characters: said.
+  assert.match(settings.groups.description.en, /100 characters at most/);
+  assert.match(settings.groups.description.fr, /100 caractères au plus/);
+  assert.match(settings.watch.description.en, /delete the device of a watched peer, edit this box/);
+  assert.match(settings.watch.description.fr, /modifiez cette boîte/);
+});
+
+test('the widget docs: deleted watched device, orange for 429 and 5xx, 100 characters', () => {
+  const en = read('docs/en.md');
+  const fr = read('docs/fr.md');
+  assert.match(en, /delete the Gladys device of a watched peer, the box shows an\s+error/);
+  assert.match(en, /edit the box and save it again/);
+  assert.match(
+    fr,
+    /supprimez l'appareil Gladys d'un client\s+surveillé, la boîte affiche une erreur/,
+  );
+  assert.match(fr, /modifiez la boîte/);
+  assert.match(en, /orange during a pause\s+asked by NetBird \(HTTP 429 or a 5xx server error\)/);
+  assert.match(
+    fr,
+    /orange pendant une pause demandée par NetBird \(HTTP 429 ou erreur serveur\s+5xx\)/,
+  );
+  assert.match(en, /100 characters at most/);
+  assert.match(fr, /100 caractères au plus/);
+  assert.match(en, /in your time zone/);
+  assert.match(fr, /dans votre fuseau\s+horaire/);
 });
 
 test('the triggers: filters and variables are keys of the event', () => {

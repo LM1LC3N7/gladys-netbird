@@ -3,17 +3,24 @@
 // (never a request of its own).
 //
 //   tiles    connected, disconnected, total (of the groups of the widget),
-//            login expired when there is one
+//            unknown and login expired when there is one
 //   focal    a card-list (list, 8 rows at most): connected peers first by
-//            name, then the disconnected ones, most recently seen first
+//            name, then the disconnected ones, most recently seen first,
+//            then those whose state NetBird does not give
 //   status   how NetBird answers, when it was last read, the watched peers
-//            that are offline
+//            that are offline or not found
 //   caption  "+N more" beyond the rows shown
 //
-// A refused token, a configuration to fix, or nothing read yet: an empty
-// state (a text and the status), never an exception. An outage after a
-// reading keeps the last peers read, with the status in danger (warning
-// during a pause asked by NetBird): the NetBird IPs rarely change.
+// A refused token or a configuration to fix: an empty state (a text and the
+// status), never an exception; so is an outage, a pause or a first reading
+// pending while nothing was ever read. Once something was read, the last
+// reading stays shown (the NetBird IPs rarely change), its colors telling
+// how fresh it is: danger for an outage, warning for a pause asked by
+// NetBird (429 or 5xx), info while the first reading after a restart is
+// pending. A reading with no peer shows 0 / 0 / 0.
+//
+// Times: the `date` of a row is formatted by the dashboard in the time zone
+// of the user; every time this module writes itself says "UTC".
 //
 // Privacy: only what the integration already keeps (no public IP, no
 // location, no e-mail, no user); never the token nor the address of the
@@ -39,7 +46,7 @@ export const WIDGET_LIMITS = Object.freeze({
   STATUS_TEXT: 40,
   CAPTION: 80,
   BODY: 300,
-  /** Watched offline peers listed in the status (the rest are in the list). */
+  /** Watched peers listed in the status (offline or not found). */
   WATCHED_IN_STATUS: 6,
   /** Pages of 3 rows cover the 500 peers followed at most. */
   PAGES: 170,
@@ -51,18 +58,29 @@ const STATE_COLORS = {
   error: WIDGET_COLORS.DANGER,
   refused: WIDGET_COLORS.DANGER,
   config: WIDGET_COLORS.DANGER,
-  waiting: WIDGET_COLORS.NEUTRAL,
+  waiting: WIDGET_COLORS.INFO,
 };
+
+/** States that never show peers (they may not be those of this token). */
+const ALWAYS_EMPTY = ['refused', 'config'];
 
 /** 'fr' for a French dashboard, 'en' otherwise. */
 export const languageOf = (language) =>
   typeof language === 'string' && language.toLowerCase().startsWith('fr') ? 'fr' : 'en';
 
-const cut = (text, max) => (text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`);
+/** Cut to `max` UTF-16 units with an ellipsis, never between the two halves of a pair. */
+export function cut(text, max) {
+  if (text.length <= max) return text;
+  let end = max - 1;
+  const code = text.charCodeAt(end - 1);
+  if (code >= 0xd800 && code <= 0xdbff) end -= 1;
+  return `${text.slice(0, end).trimEnd()}…`;
+}
 
 /**
  * The settings of a widget instance (validated by the core against the
- * manifest, read again here: a dashboard may hold an older shape).
+ * manifest, read again here: a dashboard may hold an older shape). `watch`
+ * maps a peer id to the external id of its device.
  */
 export function widgetSettings(gladys, settings = {}) {
   settings = settings && typeof settings === 'object' ? settings : {};
@@ -73,10 +91,10 @@ export function widgetSettings(gladys, settings = {}) {
     ? Number(settings.max_items)
     : Number(WIDGET_DEFAULTS.max_items);
   const page = Number(settings.page);
-  const watch = new Set();
+  const watch = new Map();
   for (const externalId of Array.isArray(settings.watch) ? settings.watch.slice(0, 50) : []) {
     const parsed = parseExternalId(gladys, externalId);
-    if (parsed?.kind === 'peer' && parsed.feature === null) watch.add(parsed.peerId);
+    if (parsed?.kind === 'peer' && parsed.feature === null) watch.set(parsed.peerId, externalId);
   }
   return {
     filter,
@@ -93,26 +111,34 @@ export function widgetSettings(gladys, settings = {}) {
 const byName = (a, b) =>
   a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }) || (a.id < b.id ? -1 : 1);
 
-/** Connected peers first by name, then the others, most recently seen first. */
+/**
+ * Connected peers first by name, then the disconnected ones, most recently
+ * seen first, then those NetBird gives no state for (`connected` null), by
+ * name.
+ */
 export function sortPeers(peers) {
   const connected = peers.filter((p) => p.connected === true).sort(byName);
-  const others = peers
-    .filter((p) => p.connected !== true)
+  const disconnected = peers
+    .filter((p) => p.connected === false)
     .sort((a, b) => (b.lastSeen ?? -Infinity) - (a.lastSeen ?? -Infinity) || byName(a, b));
-  return [...connected, ...others];
+  const unknown = peers.filter((p) => p.connected !== true && p.connected !== false).sort(byName);
+  return [...connected, ...disconnected, ...unknown];
 }
 
-function badgeOf(peer, watched, lang) {
+function badgeOf(peer, { watch, stale, lang }) {
+  // During an outage or a pause, a badge tells what was last read, never a
+  // state of now: neutral.
+  const color = (fresh) => (stale ? WIDGET_COLORS.NEUTRAL : fresh);
   if (peer.loginExpired === true) {
-    return { text: T.widget.badges.expired[lang], color: WIDGET_COLORS.WARNING };
+    return { text: T.widget.badges.expired[lang], color: color(WIDGET_COLORS.WARNING) };
   }
   if (peer.connected === true) {
-    return { text: T.widget.badges.online[lang], color: WIDGET_COLORS.SUCCESS };
+    return { text: T.widget.badges.online[lang], color: color(WIDGET_COLORS.SUCCESS) };
   }
   if (peer.connected === false) {
     return {
       text: T.widget.badges.offline[lang],
-      color: watched ? WIDGET_COLORS.DANGER : WIDGET_COLORS.NEUTRAL,
+      color: color(watch.has(peer.id) ? WIDGET_COLORS.DANGER : WIDGET_COLORS.NEUTRAL),
     };
   }
   return { text: T.widget.badges.unknown[lang], color: WIDGET_COLORS.NEUTRAL };
@@ -127,6 +153,10 @@ function subtitleOf(peer) {
     : ip || cut(peer.dnsLabel, WIDGET_LIMITS.SUBTITLE);
 }
 
+/**
+ * The details. The last connection is not repeated here: it is the `date`
+ * of the row, shown by the dashboard in the time zone of the user.
+ */
 function descriptionOf(peer, account, lang) {
   const D = T.widget.details;
   const lines = [];
@@ -135,7 +165,6 @@ function descriptionOf(peer, account, lang) {
     if (value) lines.push(`${label[lang]}${separator}${value}`);
   };
   if (peer.loginExpired === true) lines.push(D.expiredHint[lang]);
-  if (peer.connected !== true) line(D.lastSeen, formatDate(peer.lastSeen));
   line(D.dns, peer.dnsLabel);
   line(D.os, peer.os);
   line(D.version, peer.version);
@@ -149,29 +178,46 @@ function descriptionOf(peer, account, lang) {
   return lines.length > 0 ? cut(lines.join('\n'), WIDGET_LIMITS.DESCRIPTION) : null;
 }
 
-function itemOf(peer, { watch, account, lang }) {
+/**
+ * The instant of a last connection for the dashboard. An exact midnight UTC
+ * would be read by the dashboard as a calendar day (no time, and shifted a
+ * day west of Greenwich): one millisecond more keeps it an instant.
+ */
+export function instantOf(ms) {
+  const iso = new Date(ms).toISOString();
+  return iso.endsWith('T00:00:00.000Z') ? new Date(ms + 1).toISOString() : iso;
+}
+
+function itemOf(peer, context) {
   const item = {
     title: cut(peer.name, WIDGET_LIMITS.TITLE),
-    badge: badgeOf(peer, watch.has(peer.id), lang),
+    badge: badgeOf(peer, context),
   };
   const subtitle = subtitleOf(peer);
   if (subtitle) item.subtitle = subtitle;
   if (peer.connected !== true && Number.isFinite(peer.lastSeen)) {
-    item.date = new Date(peer.lastSeen).toISOString();
+    item.date = instantOf(peer.lastSeen);
   }
-  const description = descriptionOf(peer, account, lang);
+  const description = descriptionOf(peer, context.account, context.lang);
   if (description) item.description = description;
   return item;
 }
 
 const text = (value, variant) => ({ type: 'text', text: value, variant });
 
+/** The name of the Gladys device of a watched peer absent from the reading. */
+function deviceName(gladys, externalId, peerId) {
+  const device = (gladys?.devices ?? []).find((d) => d?.external_id === externalId);
+  return typeof device?.name === 'string' && device.name.trim() ? device.name.trim() : peerId;
+}
+
 /**
  * The content of the widget.
  * @param {object} input
  * @param {'ok'|'paused'|'error'|'refused'|'config'|'waiting'} input.state
  * @param {object[]} input.peers the peers of the last reading (followed ones)
- * @param {number|null} input.readAt when they were read (ms)
+ * @param {number|null} input.readAt when they were read (ms); null: nothing
+ *   was ever read for this server, filter and token
  * @param {object|null} input.account the account settings (login expiry)
  * @param {object} input.settings the raw settings of the widget instance
  * @param {string} input.language
@@ -201,10 +247,11 @@ export function peersWidget({
   ];
 
   // Nothing to show: a refused token or a configuration to fix hides the
-  // peers (they may not be the ones of this token any more).
-  const showPeers = !['refused', 'config'].includes(state) && peers.length > 0;
-  if (!showPeers) {
-    const message = T.widget.empty[state] ?? T.widget.empty.error;
+  // peers; any other state shows the last reading, if there was one.
+  const read = readAt !== null || (state === 'ok' && peers.length > 0);
+  if (ALWAYS_EMPTY.includes(state) || !read) {
+    const message =
+      state === 'ok' ? T.widget.empty.all : (T.widget.empty[state] ?? T.widget.empty.error);
     return {
       ttl_seconds,
       components: [text(message[lang], 'body'), { type: 'status', items: statusItems }],
@@ -214,12 +261,17 @@ export function peersWidget({
   const scoped = peers.filter((peer) => matchesFilter(options.groups, peer));
   const connected = scoped.filter((p) => p.connected === true);
   const disconnected = scoped.filter((p) => p.connected === false);
+  const unknown = scoped.filter((p) => p.connected !== true && p.connected !== false);
   const expired = scoped.filter((p) => p.loginExpired === true);
   const watchedOffline = sortPeers(
-    scoped.filter((p) => options.watch.has(p.id) && p.connected !== true),
+    scoped.filter((p) => options.watch.has(p.id) && p.connected === false),
   );
+  const present = new Set(peers.map((p) => p.id));
+  const watchedMissing = [...options.watch]
+    .filter(([peerId]) => !present.has(peerId))
+    .map(([peerId, externalId]) => deviceName(gladys, externalId, peerId));
   const stale = state !== 'ok';
-  const staleColor = state === 'paused' ? WIDGET_COLORS.WARNING : WIDGET_COLORS.DANGER;
+  const staleColor = STATE_COLORS[state] ?? WIDGET_COLORS.DANGER;
   const tile = (label, value, icon, color) => ({
     type: 'value',
     label: label[lang],
@@ -242,6 +294,11 @@ export function peersWidget({
     ),
     tile(T.widget.tiles.total, scoped.length, 'globe', WIDGET_COLORS.PRIMARY),
   ];
+  if (unknown.length > 0) {
+    components.push(
+      tile(T.widget.tiles.unknown, unknown.length, 'help-circle', WIDGET_COLORS.NEUTRAL),
+    );
+  }
   if (expired.length > 0) {
     components.push(tile(T.widget.tiles.expired, expired.length, 'clock', WIDGET_COLORS.WARNING));
   }
@@ -251,7 +308,7 @@ export function peersWidget({
       options.filter === 'connected'
         ? p.connected === true
         : options.filter === 'disconnected'
-          ? p.connected !== true
+          ? p.connected === false
           : true,
     ),
   );
@@ -259,7 +316,7 @@ export function peersWidget({
   const rows = view.slice(start, start + options.maxItems);
   const left = Math.max(0, view.length - start - rows.length);
   if (rows.length > 0) {
-    const context = { watch: options.watch, account, lang };
+    const context = { watch: options.watch, account, lang, stale };
     components.push({
       type: 'card-list',
       display: 'list',
@@ -283,10 +340,14 @@ export function peersWidget({
       color: stale ? staleColor : WIDGET_COLORS.NEUTRAL,
     });
   }
-  for (const peer of watchedOffline.slice(0, WIDGET_LIMITS.WATCHED_IN_STATUS)) {
+  const watchedItems = [
+    ...watchedOffline.map((peer) => [T.widget.status.watched, peer.name]),
+    ...watchedMissing.map((name) => [T.widget.status.missing, name]),
+  ];
+  for (const [label, name] of watchedItems.slice(0, WIDGET_LIMITS.WATCHED_IN_STATUS)) {
     statusItems.push({
-      label: T.widget.status.watched[lang],
-      value: cut(peer.name, WIDGET_LIMITS.STATUS_TEXT),
+      label: label[lang],
+      value: cut(name, WIDGET_LIMITS.STATUS_TEXT),
       icon: 'alert-triangle',
       color: WIDGET_COLORS.DANGER,
     });

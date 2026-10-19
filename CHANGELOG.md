@@ -17,8 +17,11 @@ the notes of the version's GitHub Release.
   at most with the name, NetBird IP and DNS name, an online / offline badge
   and the last connection of a disconnected peer, then "+N more"; settings
   for the peers listed (all, connected, disconnected), groups, peers to
-  watch (red when offline), rows shown and page. Built from the last
-  reading, no request of its own; refreshed when a peer changes state.
+  watch (red when offline or not found), rows shown and page. Built from
+  the last reading, no request of its own; refreshed when a peer changes
+  state. Peers without a state are counted apart as unknown; a reading
+  with no peer shows zeros; a new token never shows the peers of the
+  previous one.
 
 ## [0.1.1] - 2026-10-17
 

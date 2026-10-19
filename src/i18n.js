@@ -194,13 +194,15 @@ export const T = {
       connected: { en: 'Connected', fr: 'Connectés' },
       disconnected: { en: 'Disconnected', fr: 'Déconnectés' },
       total: { en: 'Total', fr: 'Total' },
+      unknown: { en: 'Unknown', fr: 'Inconnus' },
       expired: { en: 'Login expired', fr: 'Connexion expirée' },
     },
     badges: {
       online: { en: 'online', fr: 'en ligne' },
       offline: { en: 'offline', fr: 'hors ligne' },
       unknown: { en: 'unknown', fr: 'inconnu' },
-      expired: { en: 'login expired', fr: 'session expirée' },
+      // 16 characters at most: "connexion expirée" does not fit.
+      expired: { en: 'login expired', fr: 'conn. expirée' },
     },
     status: {
       label: { en: 'NetBird', fr: 'NetBird' },
@@ -212,6 +214,7 @@ export const T = {
       waiting: { en: 'first reading pending', fr: 'première lecture en attente' },
       readAt: { en: 'Last reading', fr: 'Dernière lecture' },
       watched: { en: 'Watched, offline', fr: 'Surveillé, hors ligne' },
+      missing: { en: 'Watched, not found', fr: 'Surveillé, introuvable' },
     },
     empty: {
       refused: {
@@ -230,7 +233,10 @@ export const T = {
         en: 'NetBird does not answer and no peer has been read yet: see the connection status of the integration.',
         fr: 'NetBird ne répond pas et aucun client n’a encore été lu : voyez le statut de connexion de l’intégration.',
       },
-      all: { en: 'No peer in these groups.', fr: 'Aucun client dans ces groupes.' },
+      all: {
+        en: 'NetBird answers, but no peer is in this view (groups of the widget or of the integration).',
+        fr: 'NetBird répond, mais aucun client n’est dans cette vue (groupes du widget ou de l’intégration).',
+      },
       connected: { en: 'No peer connected.', fr: 'Aucun client connecté.' },
       disconnected: { en: 'No peer disconnected.', fr: 'Aucun client déconnecté.' },
       page: (page, count) => ({
@@ -248,11 +254,10 @@ export const T = {
       version: { en: 'NetBird version', fr: 'Version NetBird' },
       dns: { en: 'DNS name', fr: 'Nom DNS' },
       groups: { en: 'Groups', fr: 'Groupes' },
-      lastSeen: { en: 'Last seen', fr: 'Dernière connexion' },
       expires: { en: 'Login expires', fr: 'Expiration de la connexion' },
       expiredHint: {
         en: 'Login expired: log in again on this peer (netbird up).',
-        fr: 'Session expirée : reconnectez ce client (netbird up).',
+        fr: 'Connexion expirée : reconnectez ce client (netbird up).',
       },
     },
   },
