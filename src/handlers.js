@@ -3,7 +3,7 @@
 // the tests run the exact wiring of the container.
 // -----------------------------------------------------------------------------
 
-import { ACTIONS } from './constants.js';
+import { ACTIONS, WIDGETS } from './constants.js';
 
 export function registerHandlers(gladys, app, logger) {
   // --- Discovery and device lifecycle --------------------------------------------
@@ -17,6 +17,9 @@ export function registerHandlers(gladys, app, logger) {
 
   // --- Configuration screen button --------------------------------------------------
   gladys.onAction(ACTIONS.TEST, () => app.testConnection());
+
+  // --- Dashboard widget: built from the last reading, no request of its own --------
+  gladys.onWidgetGet(WIDGETS.PEERS, (options) => app.getWidget(options));
 
   // --- Configuration saved by the user: a token refused earlier is tried again.
   gladys.onConfigUpdated((config) => {

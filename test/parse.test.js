@@ -6,6 +6,7 @@ import {
   formatDate,
   loginExpiry,
   parseAccount,
+  parseDnsLabel,
   parseIp,
   parsePeers,
   parseUser,
@@ -31,6 +32,7 @@ test('peers: kept fields only, sorted by id, invalid and duplicate ids left out'
   );
   assert.deepEqual(Object.keys(parsed.peers[0]).sort(), [
     'connected',
+    'dnsLabel',
     'groups',
     'id',
     'ip',
@@ -39,9 +41,19 @@ test('peers: kept fields only, sorted by id, invalid and duplicate ids left out'
     'loginExpirationEnabled',
     'loginExpired',
     'name',
+    'os',
     'version',
   ]);
+  assert.equal(parsed.peers[0].os, 'Debian GNU/Linux 12');
+  assert.equal(parsed.peers[0].dnsLabel, 'alpha.netbird.cloud');
   assert.equal(parsePeers({ peers: [] }), null);
+});
+
+test('DNS names: host names only', () => {
+  assert.equal(parseDnsLabel('NAS.netbird.cloud.'), 'nas.netbird.cloud');
+  for (const bad of ['', 'a b.cloud', '<b>.x', 'x'.repeat(64) + '.cloud', 42, null, '-a.cloud']) {
+    assert.equal(parseDnsLabel(bad), null, String(bad));
+  }
 });
 
 test('peers: odd values become unknown, never a crash', () => {

@@ -11,7 +11,10 @@ serveur) :
 - le réseau devient un appareil avec ses **pairs connectés** et ses
   **pairs** au total ;
 - trois déclencheurs de scène : **Pair connecté**, **Pair déconnecté** et
-  **Connexion d'un pair expirée**.
+  **Connexion d'un pair expirée** ;
+- un widget de tableau de bord, **Clients NetBird** : les clients (pairs)
+  connectés avec leur IP NetBird, les déconnectés avec leur dernière
+  connexion.
 
 Lecture seule : Gladys ne change jamais rien dans NetBird (aucun pair
 supprimé, aucune règle ni aucun groupe modifié).
@@ -123,6 +126,68 @@ une panne (quand NetBird n'a pas pu être lu, les changements entre-temps
 sont inconnus). Un nouveau pair ne déclenche rien. 30 événements au plus par
 lecture.
 
+## Widget « Clients NetBird »
+
+Sur le tableau de bord, modifiez, ajoutez une boîte, choisissez **Clients
+NetBird** (Gladys 5.1.0 ou plus récent). Il montre, d'après la dernière
+lecture de l'intégration (il n'envoie aucune requête à lui seul) :
+
+- **des tuiles** : clients connectés, déconnectés, au total, et connexion
+  expirée quand il y en a ;
+- **une liste** (8 lignes au plus), une ligne par client : son nom, son IP
+  NetBird et son nom DNS, un badge _en ligne_ / _hors ligne_ / _session
+  expirée_, et pour un client déconnecté la date de sa dernière connexion.
+  Touchez une ligne pour le détail : système, version NetBird, groupes,
+  expiration de la connexion. Les clients connectés d'abord, par nom, puis
+  les déconnectés, le plus récemment vu d'abord ;
+- **un état** : si NetBird répond, l'heure de la dernière lecture, les
+  clients surveillés hors ligne ;
+- **« +N autres »** quand la liste ne tient pas tous les clients.
+
+Réglages de la boîte :
+
+- **Clients listés** : tous (par défaut), connectés ou déconnectés. Les
+  compteurs couvrent toujours tous les clients des groupes de la boîte.
+- **Groupes** (facultatif) : noms ou identifiants de groupes NetBird,
+  séparés par des virgules, parmi les clients que suit l'intégration.
+- **Clients à surveiller** (facultatif) : des clients qui doivent rester
+  connectés (un serveur, un NAS). Quand l'un est déconnecté, la tuile
+  « Déconnectés » et son badge passent au rouge et l'état le nomme. Seuls
+  les clients créés comme appareils peuvent être choisis.
+- **Lignes affichées** : 3, 5 ou 8.
+- **Page** : 1 par défaut. Plus de 8 clients ? Ajoutez une seconde boîte en
+  page 2.
+
+Exemple (capture texte, tableau de bord en français) :
+
+```
+[ Connectés 2 ]  [ Déconnectés 1 ]  [ Total 3 ]
+NAS      100.92.10.1 · nas.netbird.cloud        (en ligne)
+Phone    100.92.10.3 · phone.netbird.cloud      (en ligne)
+Laptop   100.92.10.2 · laptop.netbird.cloud     (hors ligne)  2026-10-16 21:30
+  ● NetBird : répond
+  ● Dernière lecture : 2026-10-17 08:00 UTC
+```
+
+Avec **Clients à surveiller** = NAS, pendant qu'il est déconnecté :
+
+```
+[ Connectés 1 ]  [ Déconnectés 2 (rouge) ]  [ Total 3 ]
+...
+  ● Surveillé, hors ligne : NAS (rouge)
+```
+
+Quand NetBird tombe après une lecture, le widget garde les derniers clients
+lus (les IP NetBird changent rarement), tuiles et état en rouge (« sans
+réponse ») ou en orange pendant une pause demandée par NetBird (HTTP 429).
+Avec un jeton refusé, une configuration à corriger, ou rien encore lu, il
+affiche un court texte à la place des clients. Il est relu à l'intervalle de
+rafraîchissement, et tout de suite quand un client se connecte, se
+déconnecte, expire, est ajouté ou retiré, ou quand NetBird tombe ou répond
+de nouveau (une relance toutes les 10 secondes au plus). Il n'affiche
+jamais le jeton, l'adresse du serveur, l'IP publique ni la localisation
+d'un client.
+
 ## Problèmes de connexion
 
 - **Jeton refusé** (HTTP 401, ou 403 répondu par l'API NetBird elle-même,
@@ -154,7 +219,7 @@ lecture.
 
 - Un compte NetBird par intégration ; 500 pairs au plus deviennent des
   appareils (resserrez le filtre de groupes au-delà ; les comptes les
-  incluent tous).
+  incluent tous, mais pas ceux du widget, qui ne voit que les 500 suivis).
 - Un pair supprimé dans NetBird puis réenregistré reçoit un nouvel
   identifiant NetBird : il devient un nouvel appareil (l'ancien reste sans
   valeurs).

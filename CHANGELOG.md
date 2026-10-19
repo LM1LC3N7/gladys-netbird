@@ -10,6 +10,16 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+### Added
+
+- Dashboard widget with connected and disconnected peers ("NetBird peers"):
+  counts (connected, disconnected, total, login expired), a list of 8 rows
+  at most with the name, NetBird IP and DNS name, an online / offline badge
+  and the last connection of a disconnected peer, then "+N more"; settings
+  for the peers listed (all, connected, disconnected), groups, peers to
+  watch (red when offline), rows shown and page. Built from the last
+  reading, no request of its own; refreshed when a peer changes state.
+
 ## [0.1.1] - 2026-10-17
 
 ### Added

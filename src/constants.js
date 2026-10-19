@@ -14,6 +14,18 @@ export const SCENE_TRIGGERS = Object.freeze({
   LOGIN_EXPIRED: 'peer_login_expired',
 });
 
+/** Dashboard widgets (manifest `widgets`): the key is stored in user dashboards. */
+export const WIDGETS = Object.freeze({
+  PEERS: 'peers',
+});
+
+/** The settings of the peers widget (manifest `widgets[].settings`). */
+export const WIDGET_FILTERS = Object.freeze(['all', 'connected', 'disconnected']);
+export const WIDGET_MAX_ITEMS = Object.freeze(['3', '5', '8']);
+export const WIDGET_DEFAULTS = Object.freeze({ filter: 'all', max_items: '8', page: 1 });
+/** The core drops a refresh nudge sent less than 10 s after the previous one. */
+export const WIDGET_REFRESH_MIN_MS = 10_000;
+
 /** Device external ids: `ext:<selector>:peer:<NetBird peer id>`. */
 export const PEER_TYPE = 'peer';
 /** `ext:<selector>:network:main`: the one network of the configured account. */

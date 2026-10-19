@@ -189,6 +189,73 @@ export const T = {
       fr: `Connecté : ${connected} ${pluralFr(connected, 'pair connecté', 'pairs connectés')} sur ${total}. Ajoutez-les depuis l’onglet Découverte.`,
     }),
   },
+  widget: {
+    tiles: {
+      connected: { en: 'Connected', fr: 'Connectés' },
+      disconnected: { en: 'Disconnected', fr: 'Déconnectés' },
+      total: { en: 'Total', fr: 'Total' },
+      expired: { en: 'Login expired', fr: 'Connexion expirée' },
+    },
+    badges: {
+      online: { en: 'online', fr: 'en ligne' },
+      offline: { en: 'offline', fr: 'hors ligne' },
+      unknown: { en: 'unknown', fr: 'inconnu' },
+      expired: { en: 'login expired', fr: 'session expirée' },
+    },
+    status: {
+      label: { en: 'NetBird', fr: 'NetBird' },
+      ok: { en: 'answers', fr: 'répond' },
+      paused: { en: 'paused (HTTP 429 or 5xx)', fr: 'en pause (HTTP 429 ou 5xx)' },
+      error: { en: 'no answer', fr: 'sans réponse' },
+      refused: { en: 'token refused', fr: 'jeton refusé' },
+      config: { en: 'configuration to fix', fr: 'configuration à corriger' },
+      waiting: { en: 'first reading pending', fr: 'première lecture en attente' },
+      readAt: { en: 'Last reading', fr: 'Dernière lecture' },
+      watched: { en: 'Watched, offline', fr: 'Surveillé, hors ligne' },
+    },
+    empty: {
+      refused: {
+        en: 'NetBird refused the access token: nothing to show. Paste a new token in the configuration of the integration and save it.',
+        fr: 'NetBird a refusé le jeton d’accès : rien à afficher. Collez un nouveau jeton dans la configuration de l’intégration et enregistrez-la.',
+      },
+      config: {
+        en: 'The integration is not configured, or its configuration is not valid: see its connection status.',
+        fr: 'L’intégration n’est pas configurée, ou sa configuration n’est pas valide : voyez son statut de connexion.',
+      },
+      waiting: {
+        en: 'NetBird has not been read yet: the peers appear after the first reading.',
+        fr: 'NetBird n’a pas encore été lu : les clients apparaissent après la première lecture.',
+      },
+      error: {
+        en: 'NetBird does not answer and no peer has been read yet: see the connection status of the integration.',
+        fr: 'NetBird ne répond pas et aucun client n’a encore été lu : voyez le statut de connexion de l’intégration.',
+      },
+      all: { en: 'No peer in these groups.', fr: 'Aucun client dans ces groupes.' },
+      connected: { en: 'No peer connected.', fr: 'Aucun client connecté.' },
+      disconnected: { en: 'No peer disconnected.', fr: 'Aucun client déconnecté.' },
+      page: (page, count) => ({
+        en: `Page ${page} is empty: ${count} ${plural(count, 'peer', 'peers')} in this view.`,
+        fr: `La page ${page} est vide : ${count} ${pluralFr(count, 'client', 'clients')} dans cette vue.`,
+      }),
+    },
+    more: (n) => ({
+      en: `+${n} more`,
+      fr: `+${n} ${pluralFr(n, 'autre', 'autres')}`,
+    }),
+    page: (page) => ({ en: `Page ${page}`, fr: `Page ${page}` }),
+    details: {
+      os: { en: 'System', fr: 'Système' },
+      version: { en: 'NetBird version', fr: 'Version NetBird' },
+      dns: { en: 'DNS name', fr: 'Nom DNS' },
+      groups: { en: 'Groups', fr: 'Groupes' },
+      lastSeen: { en: 'Last seen', fr: 'Dernière connexion' },
+      expires: { en: 'Login expires', fr: 'Expiration de la connexion' },
+      expiredHint: {
+        en: 'Login expired: log in again on this peer (netbird up).',
+        fr: 'Session expirée : reconnectez ce client (netbird up).',
+      },
+    },
+  },
   errors: {
     readOnly: 'This integration only reads NetBird: nothing can be changed from Gladys',
     notConnected: 'NetBird is not connected: see the configuration of the integration',

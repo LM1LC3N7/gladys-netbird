@@ -2,7 +2,8 @@
 // The answers of the NetBird management API, read into plain objects. Pure.
 // Shapes from the public API reference (docs.netbird.io/api): never checked
 // against a real NetBird yet (TODO.md). Only what the integration uses is
-// kept: no e-mail, no public IP (`connection_ip`), no location.
+// kept: no e-mail, no public IP (`connection_ip`), no location. The OS and
+// the DNS name are kept for the dashboard widget only.
 // -----------------------------------------------------------------------------
 
 import { LIMITS } from '../constants.js';
@@ -62,6 +63,16 @@ export function parseIp(value) {
   return null;
 }
 
+/** The NetBird DNS name of a peer (`nas.netbird.cloud`); null when it is not a host name. */
+export function parseDnsLabel(value) {
+  if (typeof value !== 'string') return null;
+  const name = value.trim().toLowerCase().replace(/\.$/, '');
+  if (name.length === 0 || name.length > 253) return null;
+  return /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$/.test(name)
+    ? name
+    : null;
+}
+
 function parsePeer(raw) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   if (typeof raw.id !== 'string' || !ID_PATTERN.test(raw.id)) return null;
@@ -82,6 +93,9 @@ function parsePeer(raw) {
     connected: bool(raw.connected),
     lastSeen: parseDate(raw.last_seen),
     version: cleanText(raw.version, 40),
+    // Shown by the dashboard widget only (never published as a state).
+    os: cleanText(raw.os, 60),
+    dnsLabel: parseDnsLabel(raw.dns_label),
     loginExpired: bool(raw.login_expired),
     loginExpirationEnabled: bool(raw.login_expiration_enabled),
     lastLogin: parseDate(raw.last_login),

@@ -119,6 +119,86 @@
       "timeout_seconds": 30
     }
   ],
+  "widgets": [
+    {
+      "key": "peers",
+      "label": { "en": "NetBird peers", "fr": "Clients NetBird" },
+      "description": {
+        "en": "NetBird peers: connected ones with their IP, disconnected ones with their last connection.",
+        "fr": "Clients NetBird : connectés avec leur IP, déconnectés avec leur dernière connexion."
+      },
+      "icon": "shield",
+      "settings": [
+        {
+          "key": "filter",
+          "type": "select",
+          "label": { "en": "Peers listed", "fr": "Clients listés" },
+          "description": {
+            "en": "The counts always cover every peer of the groups below; this choice only picks the rows of the list.",
+            "fr": "Les compteurs couvrent toujours tous les clients des groupes ci-dessous ; ce choix ne retient que les lignes de la liste."
+          },
+          "required": true,
+          "default": "all",
+          "options": [
+            { "value": "all", "label": { "en": "All", "fr": "Tous" } },
+            { "value": "connected", "label": { "en": "Connected", "fr": "Connectés" } },
+            { "value": "disconnected", "label": { "en": "Disconnected", "fr": "Déconnectés" } }
+          ]
+        },
+        {
+          "key": "groups",
+          "type": "string",
+          "label": { "en": "Groups (optional)", "fr": "Groupes (facultatif)" },
+          "description": {
+            "en": "Names or ids of NetBird groups, separated by commas: only their peers are shown and counted. Empty: every peer the integration follows.",
+            "fr": "Noms ou identifiants de groupes NetBird, séparés par des virgules : seuls leurs clients sont affichés et comptés. Vide : tous les clients que suit l'intégration."
+          },
+          "placeholder": { "en": "e.g. servers", "fr": "ex. serveurs" },
+          "required": false
+        },
+        {
+          "key": "watch",
+          "type": "multi_select",
+          "source": "devices",
+          "label": { "en": "Peers to watch (optional)", "fr": "Clients à surveiller (facultatif)" },
+          "description": {
+            "en": "Peers that should stay connected (a server, a NAS): when one is disconnected, the widget turns red and names it. Only peers added as devices can be picked.",
+            "fr": "Clients qui doivent rester connectés (un serveur, un NAS) : quand l'un est déconnecté, le widget passe au rouge et le nomme. Seuls les clients ajoutés comme appareils peuvent être choisis."
+          },
+          "required": false
+        },
+        {
+          "key": "max_items",
+          "type": "select",
+          "label": { "en": "Rows shown", "fr": "Lignes affichées" },
+          "description": {
+            "en": "Rows of the list (8 at most); the rest is counted as \"+N more\".",
+            "fr": "Lignes de la liste (8 au plus) ; le reste est compté en « +N autres »."
+          },
+          "required": true,
+          "default": "8",
+          "options": [
+            { "value": "3", "label": { "en": "3", "fr": "3" } },
+            { "value": "5", "label": { "en": "5", "fr": "5" } },
+            { "value": "8", "label": { "en": "8", "fr": "8" } }
+          ]
+        },
+        {
+          "key": "page",
+          "type": "number",
+          "label": { "en": "Page", "fr": "Page" },
+          "description": {
+            "en": "1 for the first rows. Put a second widget on page 2 to see the next ones.",
+            "fr": "1 pour les premières lignes. Mettez un second widget en page 2 pour voir les suivantes."
+          },
+          "required": false,
+          "default": 1,
+          "min": 1,
+          "max": 170
+        }
+      ]
+    }
+  ],
   "scene_triggers": [
     {
       "key": "peer_connected",

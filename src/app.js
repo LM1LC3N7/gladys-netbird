@@ -24,7 +24,15 @@ import { join } from 'node:path';
 import { createLogger } from '@gladysassistant/integration-sdk';
 import { Budget } from './budget.js';
 import { matchesFilter, normalizeConfig } from './config.js';
-import { FEATURES, INTERVALS, LIMITS, SCENE_TRIGGERS, STORE_FILE } from './constants.js';
+import {
+  FEATURES,
+  INTERVALS,
+  LIMITS,
+  SCENE_TRIGGERS,
+  STORE_FILE,
+  WIDGET_REFRESH_MIN_MS,
+  WIDGETS,
+} from './constants.js';
 import {
   buildNetworkDevice,
   buildPeerDevice,
@@ -38,6 +46,7 @@ import { NetbirdClient } from './netbird/client.js';
 import { CODES, isTokenRefused } from './netbird/errors.js';
 import { httpRequest } from './netbird/http.js';
 import { formatDate, loginExpiry } from './netbird/parse.js';
+import { languageOf, peersWidget } from './widget.js';
 
 /** The "Test the connection" button waits 30 s: answer before. */
 const TEST_BUDGET_MS = 25_000;
@@ -98,6 +107,9 @@ export class NetbirdApp {
     this.textCursor = 0;
     /** The reading in flight: one at a time (loop, Discovery). */
     this.reading = null;
+    /** What the dashboard widget last showed (a nudge is sent when it changes). */
+    this.widgetKey = null;
+    this.widgetNudgeAt = -Infinity;
     this.reset();
   }
 
@@ -191,8 +203,10 @@ export class NetbirdApp {
     this.config = config;
     this.reset();
     // The core keeps the status and Discovery in memory: a start (a
-    // reconnection to Gladys included) always sends them again.
+    // reconnection to Gladys included) always sends them again; so does the
+    // widget nudge (the core may hold a content of before).
     this.lastStatus = null;
+    this.widgetKey = null;
     if (this.known && this.known.key !== this.knownKey(config)) this.known = null;
     await this.store.load();
 
@@ -250,6 +264,7 @@ export class NetbirdApp {
       }
       await this.publishTransports();
       await this.setStatus(false, T.status.paused(delay));
+      this.widgetChanged();
       this.schedule(delay, () => this.connect(generation));
       return;
     }
@@ -266,6 +281,7 @@ export class NetbirdApp {
         }
         await this.publishTransports();
         await this.setStatus(false, waiting.message);
+        this.widgetChanged();
         this.schedule(waiting.at - this.now(), () => this.connect(generation));
         return;
       }
@@ -282,6 +298,7 @@ export class NetbirdApp {
   async stopWith(message) {
     await this.publishTransports();
     await this.setStatus(false, message);
+    this.widgetChanged();
   }
 
   schedule(delay, task) {
@@ -359,6 +376,7 @@ export class NetbirdApp {
         `Access token refused by NetBird (HTTP ${err.status}): not retried until the configuration is saved`,
       );
       await this.setStatus(false, T.status.tokenRefused);
+      this.widgetChanged();
       return;
     }
     let delay = this.retryDelay;
@@ -394,6 +412,7 @@ export class NetbirdApp {
     };
     if (generation !== this.generation) return;
     await this.setStatus(false, message);
+    this.widgetChanged();
     this.schedule(delay, () => this.connect(generation));
   }
 
@@ -493,7 +512,7 @@ export class NetbirdApp {
     this.online = true;
     this.retryDelay = this.minRetry();
     this.retryWait = null;
-    this.known = { key: this.knownKey(this.config), peers: followed };
+    this.known = { key: this.knownKey(this.config), peers: followed, at: this.now() };
 
     const discoveredKey = JSON.stringify(followed.map((peer) => [peer.id, peer.name]));
     if (publish || discoveredKey !== this.discoveredKey) await this.publishDiscovered();
@@ -505,6 +524,7 @@ export class NetbirdApp {
       this.logger.warn(`${events.length - LIMITS.EVENTS_PER_ROUND} peer event(s) not sent`);
     }
     await this.setStatus(true, this.okMessage());
+    if (!busy) this.widgetChanged();
     if (busy) throw busy;
   }
 
@@ -692,6 +712,94 @@ export class NetbirdApp {
         for (const entry of batch) this.transports.delete(entry.external_id);
         this.logger.debug(`Transports not published: ${err.message}`);
       });
+    }
+  }
+
+  // --- Dashboard widget ------------------------------------------------------
+
+  /** How NetBird answers, for the widget. */
+  widgetState() {
+    const config = this.config;
+    if (config.urlError || !config.token || config.tokenInvalid || config.fingerprintInvalid) {
+      return 'config';
+    }
+    if (this.blocked) return 'refused';
+    if (this.online) return 'ok';
+    if (this.paused()) return 'paused';
+    if (this.retryWait) return 'error';
+    return 'waiting';
+  }
+
+  /** The peers of the last reading of this server and filter: { peers, at } or null. */
+  knownPeers() {
+    return this.known && this.config.server && this.known.key === this.knownKey(this.config)
+      ? this.known
+      : null;
+  }
+
+  /**
+   * The content of the widget, from the last reading only (no request to
+   * NetBird, so no pause can be skipped). Never throws.
+   */
+  getWidget({ settings, language } = {}) {
+    try {
+      const known = this.knownPeers();
+      return peersWidget({
+        state: this.widgetState(),
+        peers: known?.peers ?? [],
+        readAt: known?.at ?? null,
+        account: this.account,
+        settings,
+        language,
+        gladys: this.gladys,
+        // The data moves at each reading: pulled again at the poll interval.
+        ttlSeconds: this.config.pollSeconds,
+      });
+    } catch (err) {
+      this.logger.warn(`Widget not built: ${err.message}`);
+      return {
+        ttl_seconds: 60,
+        components: [
+          { type: 'text', text: T.widget.empty.error[languageOf(language)], variant: 'body' },
+        ],
+      };
+    }
+  }
+
+  /**
+   * Ask the dashboards to pull the widget again when what it shows changed:
+   * a peer connected, disconnected, expired, renamed, added or removed, or
+   * NetBird failing or answering again. Never more than one nudge per 10 s
+   * (the core would drop it): a change held back is sent at the next check,
+   * and the content expires at the poll interval anyway.
+   */
+  widgetChanged() {
+    const known = this.knownPeers();
+    const key = JSON.stringify([
+      this.widgetState(),
+      this.account,
+      (known?.peers ?? []).map((p) => [
+        p.id,
+        p.name,
+        p.ip,
+        p.dnsLabel,
+        p.connected,
+        p.loginExpired,
+        // The last seen of a connected peer is not shown.
+        p.connected === true ? null : p.lastSeen,
+        p.os,
+        p.version,
+        p.groups.map((g) => g.name),
+      ]),
+    ]);
+    if (key === this.widgetKey) return;
+    if (this.now() - this.widgetNudgeAt < WIDGET_REFRESH_MIN_MS) return;
+    try {
+      this.gladys.requestWidgetRefresh(WIDGETS.PEERS);
+      this.widgetKey = key;
+      this.widgetNudgeAt = this.now();
+    } catch (err) {
+      this.logger.debug(`Widget refresh not sent: ${err.message}`);
     }
   }
 

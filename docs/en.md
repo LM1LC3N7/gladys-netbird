@@ -9,7 +9,9 @@ the REST API of its management server (NetBird Cloud or your own server):
 - the network becomes a device with its **peers connected** and its
   **peers** in total;
 - three scene triggers: **Peer connected**, **Peer disconnected** and
-  **Peer login expired**.
+  **Peer login expired**;
+- a dashboard widget, **NetBird peers**: the connected peers with their
+  NetBird IP, the disconnected ones with their last connection.
 
 Read only: Gladys never changes anything in NetBird (no peer deleted, no
 rule or group changed).
@@ -112,6 +114,66 @@ a start of the integration, nor at the first reading after an outage (when
 NetBird could not be read, the changes in between are unknown). A new peer
 fires nothing. At most 30 events per reading.
 
+## Dashboard widget "NetBird peers"
+
+On the dashboard, edit, add a box, pick **NetBird peers** (it needs Gladys
+5.1.0 or later). It shows, from the last reading of the integration (it
+sends no request of its own):
+
+- **tiles**: peers connected, disconnected, in total, and login expired when
+  one is;
+- **a list** (8 rows at most), one row per peer: its name, its NetBird IP
+  and DNS name, a badge _online_ / _offline_ / _login expired_, and for a
+  disconnected peer the date of its last connection. Tap a row for the
+  details: system, NetBird version, groups, login expiry. The connected
+  peers come first, by name, then the disconnected ones, the most recently
+  seen first;
+- **a status**: whether NetBird answers, the time of the last reading, the
+  watched peers that are offline;
+- **"+N more"** when the list does not hold every peer.
+
+Settings of the box:
+
+- **Peers listed**: all (default), connected, or disconnected. The counts
+  always cover every peer of the groups of the box.
+- **Groups** (optional): names or ids of NetBird groups, separated by
+  commas, within the peers the integration follows.
+- **Peers to watch** (optional): peers that should stay connected (a
+  server, a NAS). When one is disconnected, the "Disconnected" tile and its
+  badge turn red and the status names it. Only peers created as devices
+  can be picked.
+- **Rows shown**: 3, 5 or 8.
+- **Page**: 1 by default. More than 8 peers? Add a second box on page 2.
+
+Example (text capture, English dashboard):
+
+```
+[ Connected 2 ]  [ Disconnected 1 ]  [ Total 3 ]
+NAS      100.92.10.1 · nas.netbird.cloud        (online)
+Phone    100.92.10.3 · phone.netbird.cloud      (online)
+Laptop   100.92.10.2 · laptop.netbird.cloud     (offline)  2026-10-16 21:30
+  ● NetBird: answers
+  ● Last reading: 2026-10-17 08:00 UTC
+```
+
+With **Peers to watch** = NAS, while it is disconnected:
+
+```
+[ Connected 1 ]  [ Disconnected 2 (red) ]  [ Total 3 ]
+...
+  ● Watched, offline: NAS (red)
+```
+
+When NetBird fails after a reading, the widget keeps the last peers read
+(NetBird IPs rarely change), with its tiles and status in red ("no answer")
+or orange during a pause asked by NetBird (HTTP 429). With a refused token, a
+configuration to fix, or nothing read yet, it shows a short text instead of
+the peers. It is pulled again at the refresh interval, and at once when a
+peer connects, disconnects, expires, is added or removed, or when NetBird
+fails or answers again (one nudge per 10 seconds at most). It never shows
+the token, the address of the server, the public IP or the location of a
+peer.
+
 ## Connection problems
 
 - **Token refused** (HTTP 401, or a 403 answered by the NetBird API itself,
@@ -139,7 +201,8 @@ fires nothing. At most 30 events per reading.
 ## Limits
 
 - One NetBird account per integration; 500 peers at most become devices
-  (narrow the group filter beyond; the counts include them all).
+  (narrow the group filter beyond; the counts include them all, but not
+  those of the widget, which sees only the 500 followed).
 - A peer deleted in NetBird and registered again gets a new NetBird id: it
   becomes a new device (the old one stays without values).
 - The network device is one per integration (`network:main`): pointing the

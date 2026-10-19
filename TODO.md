@@ -52,6 +52,12 @@ up to date at the end of every milestone.
       user-agent `gladys-netbird/<version>`; more invisible characters;
       `app.netbird.io` read as `api.netbird.io`; docs (last seen, users
       endpoint, re-registered peer, counts beyond 500); French singular for 0.
+- [x] **Dashboard widget** (2026-10-20, after 0.1.1, Louis's request):
+      widget `peers` ("NetBird peers" / "Clients NetBird"): tiles, a
+      card-list of the peers, a status, "+N more"; settings filter, groups,
+      peers to watch, rows shown, page. Tested against the SDK's fake
+      Gladys and `validateWidgetContent`; **never seen on a real Gladys
+      dashboard**.
 - [ ] **Milestone 2 — real NetBird** (a tester with NetBird Cloud and one
       with a self-hosted server): record real answers as fixtures (token and
       personal data removed), fix what differs. To check first:
@@ -217,3 +223,54 @@ up to date at the end of every milestone.
 - **Poll interval**: 60 s by default (brief), 120 / 300 / 600 offered. One
   request per reading, plus one per hour for the account.
 - `gladys_version >=5.1.0` (scene triggers). `transports: ["cloud"]`.
+- **Widget `peers`** (2026-10-20):
+  - `gladys_version` stays `>=5.1.0`: the store requires 5.1.0 for
+    `widgets` (integration-store `constants.js`), and the widget code of
+    the core (card-list with subtitle, date, badge, description; status;
+    requestWidgetRefresh) is in the v5.1.0 tag. No action `fields` (5.2).
+  - **Data**: only the last successful reading (`known`, with its time);
+    `onWidgetGet` sends no request, so a 429 / 5xx pause is never skipped
+    and the token refusal never retried from a dashboard. `ttl_seconds` =
+    poll interval (60 to 600). `requestWidgetRefresh('peers')` when what
+    the widget shows changes (state of NetBird, a peer connected /
+    disconnected / expired / renamed / added / removed, its IP, DNS name,
+    OS, version, groups, last seen of a disconnected peer, the account
+    settings), never for the last seen of a connected peer (not shown).
+    At most one nudge per 10 s (the core drops the next ones): a change
+    held back is sent at the next check, the ttl covers it anyway; no
+    timer of its own. The key is cleared at every `connected` (lesson of
+    lot 6: the core cache may hold an older content).
+  - **Content** (budget: 8 components, 1 focal, 6 tiles, 2 texts with 1
+    body, 1 status): tiles connected / disconnected / total (always), login
+    expired (only when > 0); card-list `display: list`, 8 rows at most,
+    title = name (60), subtitle = NetBird IP · DNS name (60, the IP alone
+    when both do not fit), date = last seen of a peer not connected, badge
+    online (success) / offline (neutral, danger for a watched peer) /
+    login expired (warning) / unknown (neutral), description = last seen,
+    DNS name, OS, NetBird version, groups (20), login expiry; no link.
+    Status: NetBird state, last reading, watched peers offline (6). Caption
+    "+N more" (and "Page N").
+  - **Sort**: connected first by name (no case), then the others (not
+    connected, unknown included) by last seen, most recent first, unknown
+    last, ties by name. The "connected" / "disconnected" filters keep that
+    order (one group each); no reversed order.
+  - **Settings**: `filter` (all / connected / disconnected; counts are not
+    filtered), `groups` (same grammar as the configuration, within the
+    followed peers), `watch` (multi_select, `source: devices`: "a peer that
+    should be connected", the only way to know it), `max_items` (3 / 5 /
+    8), `page` (number, 1 to 170: pagination by a second box, no button,
+    so no `onWidgetAction`).
+  - **Colors**: a watched peer offline turns the Disconnected tile and its
+    badge `danger` and is named in the status; NetBird failing after a
+    reading: tiles and status `danger` (`warning` during a pause), the
+    last peers kept (IPs rarely change). Token refused, configuration to
+    fix, nothing read yet: empty state (a body text and the status), no
+    peer, no count. The handler never throws (a failure gives a text).
+  - **Privacy**: the widget shows only what the module already keeps; two
+    fields added to the parser for it, `os` and `dns_label` (validated as a
+    host name), shown nowhere else. No public IP (`connection_ip`), no
+    city / country, no user / e-mail even though the API gives them (the
+    widget is on a dashboard any Gladys user may see); never the token nor
+    the server address. Nothing new in the logs.
+  - **Not done**: "update available" (no API field, see milestone 3);
+    widget counts cover the 500 followed peers only.

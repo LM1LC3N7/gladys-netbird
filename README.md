@@ -4,7 +4,9 @@
 **NetBird**: each peer of your NetBird network becomes a Gladys device
 (connected, last seen, NetBird IP, client version, login expired and login
 expiry), the network a device with its counts, and a peer that connects,
-disconnects or whose login expires a scene trigger. Read only.
+disconnects or whose login expires a scene trigger. A dashboard widget lists
+the connected peers with their NetBird IP and the disconnected ones with
+their last connection. Read only.
 **Unofficial integration, not affiliated with NetBird. Never tested with a
 real NetBird account yet.**
 
@@ -20,7 +22,8 @@ Gladys ⇄ SDK ⇄ src/app.js (NetbirdApp)
                  ├─ src/netbird/errors.js   error codes, token refusal
                  ├─ src/budget.js           states per minute
                  ├─ src/store.js            /data: refusals, pauses
-                 └─ src/devices.js          peers and network (pure)
+                 ├─ src/devices.js          peers and network (pure)
+                 └─ src/widget.js           dashboard widget "peers" (pure)
 ```
 
 - **Authentication**: a personal access token in the
@@ -48,6 +51,14 @@ Gladys ⇄ SDK ⇄ src/app.js (NetbirdApp)
 - **Triggers**: `peer_connected`, `peer_disconnected`, `peer_login_expired`,
   compared with the previous reading only (none at start, none after a
   failure, none for a new peer).
+- **Widget** `peers` (Gladys >= 5.1.0): tiles (connected, disconnected,
+  total, login expired), a card-list of 8 rows at most (connected by name,
+  then disconnected by last seen), a status and "+N more"; settings filter,
+  groups, peers to watch, rows, page. Built from the last reading (no
+  request of its own, so no pause is skipped), `ttl_seconds` = poll
+  interval, `requestWidgetRefresh` when what it shows changes (at most one
+  per 10 s). Never the token, the server address, a public IP or a
+  location.
 - **Read only**: every set_value is refused; no command endpoint is called.
 
 ## Development

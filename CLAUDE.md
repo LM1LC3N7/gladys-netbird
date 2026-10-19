@@ -42,6 +42,7 @@ src/netbird/http.js               the only network access (node:https, fingerpri
 src/netbird/parse.js              answers -> plain objects (no personal data kept)
 src/netbird/errors.js             error codes; what a refused token is
 src/devices.js                    peer and network devices (pure), never fewer features
+src/widget.js                     dashboard widget `peers` (pure), from the last reading
 src/config.js                     DEFAULTS (mirror the manifest) + normalization
 src/store.js                      /data: refusal HMAC, salt, pauses
 src/budget.js                     sliding window of the states sent per minute
@@ -56,7 +57,8 @@ test/                             node --test, fake Gladys (SDK) + fake NetBird
 - **External ids are forever**: `peer:<NetBird peer id>`, `network:main`, and
   the feature keys of `src/constants.js`. Changing one creates a new device
   and orphans the old one. The same goes for every key users store: manifest
-  `config_schema`, `actions`, scene trigger keys and their fields.
+  `config_schema`, `actions`, scene trigger keys and their fields, the
+  widget key `peers` and its settings (saved in user dashboards).
 - **Read only**: no request other than GET, no command. Adding one needs
   Louis's decision, off by default, never a switch.
 - **The token** is sent only in the `Authorization` header; never in a URL,

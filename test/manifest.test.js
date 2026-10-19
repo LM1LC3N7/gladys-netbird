@@ -8,7 +8,16 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createFakeGladys } from '@gladysassistant/integration-sdk/testing';
 import { DEFAULTS } from '../src/config.js';
-import { ACTIONS, FEATURES, POLL_INTERVALS, SCENE_TRIGGERS } from '../src/constants.js';
+import {
+  ACTIONS,
+  FEATURES,
+  POLL_INTERVALS,
+  SCENE_TRIGGERS,
+  WIDGET_DEFAULTS,
+  WIDGET_FILTERS,
+  WIDGET_MAX_ITEMS,
+  WIDGETS,
+} from '../src/constants.js';
 import { buildNetworkDevice, buildPeerDevice } from '../src/devices.js';
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
@@ -141,7 +150,11 @@ test('the keys of the manifest are the keys of the code, all registered', () => 
   }
   assert.ok(manifest.actions.every((a) => a.timeout_seconds >= 5 && a.timeout_seconds <= 120));
   assert.equal(manifest.scene_actions, undefined, 'read only: no scene action');
-  assert.equal(manifest.widgets, undefined);
+  assert.deepEqual(keys(manifest.widgets), Object.values(WIDGETS));
+  for (const name of Object.keys(WIDGETS)) {
+    assert.ok(handlers.includes(`onWidgetGet(WIDGETS.${name}`), name);
+    assert.ok(app.includes(`requestWidgetRefresh(WIDGETS.${name})`), `${name} is never nudged`);
+  }
   assert.deepEqual(keys(manifest.scene_triggers).sort(), Object.values(SCENE_TRIGGERS).sort());
   for (const name of Object.keys(SCENE_TRIGGERS)) {
     assert.ok(app.includes(`SCENE_TRIGGERS.${name}`), `${name} is never fired`);
@@ -149,6 +162,43 @@ test('the keys of the manifest are the keys of the code, all registered', () => 
   for (const handler of ['onScanRequest(', 'onSetValue(', 'onConfigUpdated(']) {
     assert.ok(handlers.includes(handler), handler);
   }
+});
+
+test('the widget: limits of the store, settings tied to the code, nothing secret', () => {
+  assert.equal(manifest.widgets.length, 1);
+  const [widget] = manifest.widgets;
+  assert.match(widget.key, /^[a-z0-9_]{2,32}$/);
+  assert.match(widget.icon, /^[a-z0-9-]{1,40}$/);
+  assert.deepEqual(widget.label, { en: 'NetBird peers', fr: 'Clients NetBird' });
+  for (const lang of ['en', 'fr']) {
+    assert.ok(widget.label[lang].length >= 3 && widget.label[lang].length <= 30, lang);
+    const length = widget.description[lang].length;
+    assert.ok(length >= 10 && length <= 100, `widget description.${lang}: ${length}`);
+  }
+  const settings = Object.fromEntries(widget.settings.map((s) => [s.key, s]));
+  assert.deepEqual(Object.keys(settings), ['filter', 'groups', 'watch', 'max_items', 'page']);
+  assert.ok(widget.settings.length <= 10);
+  for (const setting of widget.settings) {
+    assert.ok(['string', 'number', 'boolean', 'select', 'multi_select'].includes(setting.type));
+    for (const lang of ['en', 'fr']) {
+      assert.ok((setting.description?.[lang] ?? '').length <= 1000, `${setting.key}.${lang}`);
+    }
+  }
+  assert.deepEqual(
+    settings.filter.options.map((o) => o.value),
+    WIDGET_FILTERS,
+  );
+  assert.deepEqual(
+    settings.max_items.options.map((o) => o.value),
+    WIDGET_MAX_ITEMS,
+  );
+  for (const [key, value] of Object.entries(WIDGET_DEFAULTS)) {
+    assert.equal(settings[key].default, value, key);
+  }
+  assert.equal(settings.watch.source, 'devices');
+  assert.equal(settings.watch.default, undefined, 'no default with a source');
+  assert.ok(settings.page.min === 1 && settings.page.max >= 1);
+  assert.match(manifest.gladys_version, /^>=5\.1\.0$/, 'widgets need 5.1.0 (store)');
 });
 
 test('the triggers: filters and variables are keys of the event', () => {
