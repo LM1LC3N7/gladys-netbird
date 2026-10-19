@@ -183,6 +183,9 @@ NetBird answers, but no peer is in this view (groups of the widget or of the int
   ● Last reading: 2026-10-17 08:00 UTC
 ```
 
+While NetBird does not answer (or a pause, or the first reading after a
+restart), the same empty view says "No peer in this view (last reading)."
+
 Once something was read, the widget keeps showing the last reading (NetBird
 IPs rarely change), and its colors say how fresh it is: tiles and status in
 red when NetBird does not answer ("no answer"), in orange during a pause

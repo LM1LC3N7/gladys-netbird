@@ -327,7 +327,10 @@ export function peersWidget({
       view.length > 0
         ? T.widget.empty.page(options.page, view.length)
         : scoped.length === 0
-          ? T.widget.empty.all
+          ? // "NetBird answers" only when it does right now.
+            stale
+            ? T.widget.empty.allStale
+            : T.widget.empty.all
           : T.widget.empty[options.filter];
     components.push(text(message[lang], 'body'));
   }

@@ -237,6 +237,10 @@ export const T = {
         en: 'NetBird answers, but no peer is in this view (groups of the widget or of the integration).',
         fr: 'NetBird répond, mais aucun client n’est dans cette vue (groupes du widget ou de l’intégration).',
       },
+      allStale: {
+        en: 'No peer in this view (last reading).',
+        fr: 'Aucun client dans cette vue (dernière lecture).',
+      },
       connected: { en: 'No peer connected.', fr: 'Aucun client connecté.' },
       disconnected: { en: 'No peer disconnected.', fr: 'Aucun client déconnecté.' },
       page: (page, count) => ({

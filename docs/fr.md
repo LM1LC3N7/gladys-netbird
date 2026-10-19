@@ -199,6 +199,10 @@ NetBird répond, mais aucun client n'est dans cette vue (groupes du widget ou de
   ● Dernière lecture : 2026-10-17 08:00 UTC
 ```
 
+Quand NetBird ne répond pas (ou pendant une pause, ou la première lecture
+après un redémarrage), la même vue vide dit « Aucun client dans cette vue
+(dernière lecture). »
+
 Une fois quelque chose lu, le widget continue de montrer la dernière lecture
 (les IP NetBird changent rarement), et ses couleurs disent sa fraîcheur :
 tuiles et état en rouge quand NetBird ne répond pas (« sans réponse »), en

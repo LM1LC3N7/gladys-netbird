@@ -361,6 +361,20 @@ test('S13: NetBird answers with no peer: 0 / 0 / 0, a text, the last reading', (
   const outage = build({ state: 'error', peers: [] });
   assertWithinSdk(outage);
   assert.deepEqual(tiles(outage).Total, [0, 'danger']);
+  // "NetBird answers" only when it does: a neutral text otherwise.
+  for (const state of ['error', 'paused', 'waiting']) {
+    for (const [language, expected] of [
+      ['en', 'No peer in this view (last reading).'],
+      ['fr', 'Aucun client dans cette vue (dernière lecture).'],
+    ]) {
+      const empty = build({ state, peers: [], language });
+      assertWithinSdk(empty);
+      assert.equal(of(empty, 'text')[0].text, expected, `${state}/${language}`);
+      assert.doesNotMatch(JSON.stringify(empty), /answers, but|répond, mais/);
+    }
+    const nobody = build({ state, settings: { groups: 'nothing' } });
+    assert.equal(of(nobody, 'text')[0].text, 'No peer in this view (last reading).');
+  }
 });
 
 test('S2: waiting with known peers (Gladys reconnected): info, consistently', () => {
