@@ -1,6 +1,6 @@
 {
   "name": "gladys-netbird",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "description": "Gladys Assistant external integration for NetBird: the peers of a NetBird network (connected, last seen, IP, client version, login expiration), read only, through the management REST API. Unofficial, not affiliated with NetBird.",
   "type": "module",
